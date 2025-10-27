@@ -35,7 +35,7 @@ class GraphValidator:
                 return False, "Graph contains cycles"
 
         # Check for self-loops
-        if graph.number_of_selfloops() > 0:
+        if nx.number_of_selfloops(graph) > 0:
             return False, "Graph contains self-loops"
 
         # Check for isolated nodes (warning, not error)
