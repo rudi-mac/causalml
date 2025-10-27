@@ -16,7 +16,7 @@ from utils.graph_utils import GraphValidator
 
 # Page configuration
 st.set_page_config(
-    page_title="Causal Analysis Tool",
+    page_title="Graph-Based Double Machine Learning",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,7 +24,7 @@ st.set_page_config(
 
 # Initialize session state
 if 'step' not in st.session_state:
-    st.session_state.step = 1
+    st.session_state.step = 0  # Start with explanation page
 if 'data' not in st.session_state:
     st.session_state.data = None
 if 'column_types' not in st.session_state:
@@ -35,6 +35,8 @@ if 'treatment' not in st.session_state:
     st.session_state.treatment = None
 if 'outcome' not in st.session_state:
     st.session_state.outcome = None
+if 'interaction_variables' not in st.session_state:
+    st.session_state.interaction_variables = []
 if 'results' not in st.session_state:
     st.session_state.results = None
 
@@ -42,10 +44,10 @@ def main():
     """Main application flow"""
 
     # Title and description
-    st.title("🔬 Interactive Causal Analysis Tool")
+    st.title("🔬 Graph-Based Double Machine Learning")
     st.markdown("""
-    This tool enables you to perform **Double Machine Learning (DML)** causal analysis
-    on your own data. Upload a CSV file, define the causal structure, and estimate treatment effects.
+    This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
+    Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
     """)
 
     # Sidebar for navigation
@@ -54,41 +56,212 @@ def main():
         step = st.radio(
             "Current Step:",
             [
+                "0️⃣ Workflow Overview",
                 "1️⃣ Upload Data",
                 "2️⃣ Configure Data Types",
                 "3️⃣ Build Causal DAG",
-                "4️⃣ Specify Variables",
-                "5️⃣ Run DML Analysis",
-                "6️⃣ View Results"
+                "4️⃣ Specify Interactions",
+                "5️⃣ Specify Variables",
+                "6️⃣ Run DML Analysis",
+                "7️⃣ View Results"
             ],
-            index=st.session_state.step - 1
+            index=st.session_state.step
         )
         st.session_state.step = int(step[0])
 
         st.markdown("---")
         st.markdown("### About")
         st.markdown("""
-        **Double Machine Learning** combines:
+        **Graph-Based DML** combines:
         - Causal inference theory (DAGs)
-        - Machine learning (LASSO, Random Forests)
-        - Rigorous statistical estimation
+        - Machine learning (LASSO, LightGBM)
+        - Interaction effect discovery
+        - Robust statistical estimation
+
+        Focus: Finding significant **two-way and three-way interactions**
 
         Built with DoWhy + EconML
         """)
 
     # Main content area based on current step
-    if st.session_state.step == 1:
+    if st.session_state.step == 0:
+        step_0_workflow_overview()
+    elif st.session_state.step == 1:
         step_1_upload_data()
     elif st.session_state.step == 2:
         step_2_configure_types()
     elif st.session_state.step == 3:
         step_3_build_dag()
     elif st.session_state.step == 4:
-        step_4_specify_variables()
+        step_4_specify_interactions()
     elif st.session_state.step == 5:
-        step_5_run_analysis()
+        step_5_specify_variables()
     elif st.session_state.step == 6:
-        step_6_view_results()
+        step_6_run_analysis()
+    elif st.session_state.step == 7:
+        step_7_view_results()
+
+
+def step_0_workflow_overview():
+    """Step 0: Workflow explanation and overview"""
+    st.header("📚 Workflow Overview: Graph-Based Double Machine Learning")
+
+    st.markdown("""
+    ### What is Graph-Based Double Machine Learning?
+
+    **Graph-Based Double Machine Learning** is a powerful methodology that combines:
+    - **Directed Acyclic Graphs (DAGs)** to represent causal assumptions
+    - **Double Machine Learning (DML)** to handle high-dimensional settings
+    - **Interaction term exploration** to discover heterogeneous effects
+
+    This approach enables you to **robustly explore and estimate interaction effects** without
+    the limitations of traditional regression that requires pre-selecting a small subset of interactions.
+
+    ---
+
+    ### The Workflow
+
+    This tool guides you through a systematic 7-step process:
+    """)
+
+    # Display workflow steps
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        st.markdown("""
+        #### Steps:
+        1. **Upload Data**
+        2. **Configure Data Types**
+        3. **Build Causal DAG**
+        4. **Specify Interactions**
+        5. **Specify Variables**
+        6. **Run DML Analysis**
+        7. **View Results**
+        """)
+
+    with col2:
+        st.markdown("""
+        #### What Happens:
+        - Load your CSV dataset
+        - Identify variable types (continuous, binary, categorical)
+        - Encode your causal assumptions in a DAG
+        - **Select variables for interaction term construction**
+        - Choose treatment and outcome variables
+        - Estimate effects using DML with LASSO/LightGBM
+        - Review significant interaction terms
+        """)
+
+    st.markdown("---")
+
+    # Workflow diagram (text-based representation)
+    st.subheader("🔄 Visual Workflow")
+
+    st.markdown("""
+    ```
+    ┌─────────────────────────────────────────────────────┐
+    │                                                     │
+    │   Identify Phenomenon & Target Theory              │
+    │                                                     │
+    └────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+    ┌─────────────────────────────────────────────────────┐
+    │  GRAPH-BASED DOUBLE MACHINE LEARNING                │
+    │                                                     │
+    │  1. Encode Existing Knowledge into DAG              │
+    │  2. Collect and Pre-Process Data                    │
+    │  3. Specify Learners (e.g., LASSO)                 │
+    │  4. Specify Interactions of Interest   ◄────────┐  │
+    │  5. Fit Treatment & Outcome Models                  │
+    │  6. Perform Sensitivity Analysis                    │
+    │  7. Select Robust Interactions                      │
+    │                                                     │
+    └────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+    ┌─────────────────────────────────────────────────────┐
+    │                                                     │
+    │   Formulate Implications for Theory and Practice    │
+    │                                                     │
+    └─────────────────────────────────────────────────────┘
+    ```
+    """)
+
+    st.markdown("---")
+
+    # Key concepts
+    st.subheader("🔑 Key Concepts")
+
+    with st.expander("📊 What are Interaction Effects?"):
+        st.markdown("""
+        **Interaction effects** (or effect modifiers) occur when the effect of one variable on an outcome
+        depends on the level of another variable.
+
+        **Example:** The effect of obtaining a college degree on salary might differ by:
+        - Gender (two-way interaction: Degree × Gender)
+        - Gender AND family wealth (three-way interaction: Degree × Gender × Wealth)
+
+        Traditional regression typically pre-selects a few interactions to avoid overfitting.
+        Graph-Based DML allows you to explore ALL possible interactions robustly.
+        """)
+
+    with st.expander("🎯 Why Double Machine Learning?"):
+        st.markdown("""
+        **Double Machine Learning (DML)** addresses key challenges:
+
+        1. **Regularization Bias**: ML models like LASSO shrink coefficients, which can bias
+           causal estimates. DML uses orthogonalization to eliminate this bias.
+
+        2. **High-Dimensional Settings**: When you have many variables and interaction terms,
+           traditional OLS suffers from:
+           - Overfitting
+           - Multicollinearity
+           - Poor generalization
+
+        3. **Valid Inference**: DML provides statistically valid p-values and confidence intervals
+           even with ML models.
+
+        **How it works:**
+        - Separately estimates parts of treatment and outcome influenced by confounders
+        - Uses residuals (free from confounding) to estimate the direct causal effect
+        - Applies cross-fitting to avoid overfitting
+        """)
+
+    with st.expander("📈 Why Directed Acyclic Graphs (DAGs)?"):
+        st.markdown("""
+        **DAGs** help you:
+
+        1. **Encode Causal Assumptions**: Explicitly represent your theory about how variables relate
+        2. **Identify Confounders**: Systematically find variables that need to be controlled
+        3. **Avoid Bad Controls**: Prevent including mediators or colliders that bias estimates
+        4. **Make Assumptions Transparent**: Others can scrutinize and critique your causal model
+
+        **Important:** DAGs are theory-driven. The quality of your causal estimates depends on
+        correctly specifying the graph based on domain knowledge.
+        """)
+
+    st.markdown("---")
+
+    # Focus of this tool
+    st.info("""
+    ### 🎯 Focus of This Tool
+
+    This application is specifically designed to help you **discover significant interaction effects**:
+
+    - **Two-way interactions**: How two variables jointly modify treatment effects
+    - **Three-way interactions**: How three variables jointly modify treatment effects
+
+    By algorithmically handling interaction terms, you can uncover complex patterns in your data
+    that traditional analysis might miss, while maintaining statistical rigor through DML's
+    doubly-robust estimation and sensitivity analysis.
+    """)
+
+    # Navigation
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("➡️ Start Analysis", type="primary", use_container_width=True):
+            st.session_state.step = 1
+            st.rerun()
 
 
 def step_1_upload_data():
@@ -206,14 +379,124 @@ def step_3_build_dag():
                 st.session_state.step = 2
                 st.rerun()
         with col3:
-            if is_valid and st.button("➡️ Proceed to Specify Variables", type="primary", use_container_width=True):
+            if is_valid and st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
                 st.session_state.step = 4
                 st.rerun()
 
 
-def step_4_specify_variables():
-    """Step 4: Specify treatment and outcome variables"""
-    st.header("Step 4: Specify Treatment & Outcome")
+def step_4_specify_interactions():
+    """Step 4: Specify which variables to use for interaction terms"""
+    st.header("Step 4: Specify Interactions of Interest")
+
+    if st.session_state.dag is None:
+        st.warning("⚠️ Please create a DAG first (Step 3)")
+        return
+
+    st.markdown("""
+    Select variables to construct **interaction terms**. The tool will create:
+    - **Two-way interactions**: All pairwise combinations (e.g., A×B, A×C, B×C)
+    - **Three-way interactions**: All three-variable combinations (e.g., A×B×C)
+
+    ### Why Select a Subset?
+    While Graph-Based DML can handle many interaction terms, focusing on theoretically-relevant
+    variables helps maintain interpretability and computational efficiency.
+
+    **Tip:** Include variables that are root nodes in your DAG (confounders, not mediators).
+    """)
+
+    # Get all variables from DAG
+    all_variables = list(st.session_state.dag.nodes())
+
+    if not all_variables:
+        st.error("❌ No variables found in DAG")
+        return
+
+    # Identify root nodes (variables with no predecessors) - these are good candidates
+    root_nodes = [node for node in all_variables if st.session_state.dag.in_degree(node) == 0]
+
+    st.info(f"💡 **Root nodes in your DAG** (good candidates for interactions): {', '.join(root_nodes) if root_nodes else 'None'}")
+
+    st.subheader("Select Variables for Interaction Terms")
+
+    # Multi-select for interaction variables
+    selected_vars = st.multiselect(
+        "Choose variables to include in interaction terms:",
+        options=all_variables,
+        default=st.session_state.interaction_variables if st.session_state.interaction_variables else None,
+        help="Select 2 or more variables. The tool will create all possible 2-way and 3-way interactions."
+    )
+
+    if selected_vars:
+        st.session_state.interaction_variables = selected_vars
+
+        # Calculate number of interactions that will be created
+        from itertools import combinations
+        n_vars = len(selected_vars)
+        n_two_way = len(list(combinations(selected_vars, 2)))
+        n_three_way = len(list(combinations(selected_vars, 3))) if n_vars >= 3 else 0
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Variables Selected", n_vars)
+        with col2:
+            st.metric("Two-Way Interactions", n_two_way)
+        with col3:
+            st.metric("Three-Way Interactions", n_three_way)
+
+        # Show preview of interactions
+        with st.expander("📋 Preview of Interaction Terms", expanded=True):
+            st.markdown("**Two-way interactions:**")
+            two_way_interactions = [f"{a} × {b}" for a, b in combinations(selected_vars, 2)]
+            if two_way_interactions:
+                # Display in columns
+                cols = st.columns(3)
+                for i, interaction in enumerate(two_way_interactions):
+                    cols[i % 3].markdown(f"- {interaction}")
+            else:
+                st.markdown("*None (need at least 2 variables)*")
+
+            if n_vars >= 3:
+                st.markdown("**Three-way interactions:**")
+                three_way_interactions = [f"{a} × {b} × {c}" for a, b, c in combinations(selected_vars, 3)]
+                if three_way_interactions:
+                    cols = st.columns(3)
+                    for i, interaction in enumerate(three_way_interactions):
+                        cols[i % 3].markdown(f"- {interaction}")
+            else:
+                st.markdown("**Three-way interactions:** *Need at least 3 variables*")
+
+        # Warning for too many interactions
+        total_interactions = n_two_way + n_three_way
+        if total_interactions > 100:
+            st.warning(f"⚠️ You've selected {total_interactions} interaction terms. This may take a long time to compute. Consider selecting fewer variables.")
+        elif total_interactions > 50:
+            st.info(f"ℹ️ You've selected {total_interactions} interaction terms. Analysis may take several minutes.")
+
+        # Navigation buttons
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            if st.button("⬅️ Back to DAG", use_container_width=True):
+                st.session_state.step = 3
+                st.rerun()
+        with col3:
+            if len(selected_vars) >= 2 and st.button("➡️ Proceed to Specify Variables", type="primary", use_container_width=True):
+                st.session_state.step = 5
+                st.rerun()
+
+    else:
+        st.warning("⚠️ Please select at least 2 variables to create interaction terms.")
+
+        # Navigation buttons (without proceed)
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            if st.button("⬅️ Back to DAG", use_container_width=True):
+                st.session_state.step = 3
+                st.rerun()
+
+
+def step_5_specify_variables():
+    """Step 5: Specify treatment and outcome variables"""
+    st.header("Step 5: Specify Treatment & Outcome")
 
     if st.session_state.dag is None:
         st.warning("⚠️ Please create a DAG first (Step 3)")
@@ -272,21 +555,21 @@ def step_4_specify_variables():
         # Navigation buttons
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to DAG", use_container_width=True):
-                st.session_state.step = 3
+            if st.button("⬅️ Back to Interactions", use_container_width=True):
+                st.session_state.step = 4
                 st.rerun()
         with col3:
             if st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
-                st.session_state.step = 5
+                st.session_state.step = 6
                 st.rerun()
 
 
-def step_5_run_analysis():
-    """Step 5: Run DML analysis"""
-    st.header("Step 5: Run DML Analysis")
+def step_6_run_analysis():
+    """Step 6: Run DML analysis"""
+    st.header("Step 6: Run DML Analysis")
 
     if st.session_state.treatment is None or st.session_state.outcome is None:
-        st.warning("⚠️ Please specify treatment and outcome variables (Step 4)")
+        st.warning("⚠️ Please specify treatment and outcome variables (Step 5)")
         return
 
     st.markdown("""
@@ -326,7 +609,8 @@ def step_5_run_analysis():
                     dag=st.session_state.dag,
                     treatment=st.session_state.treatment,
                     outcome=st.session_state.outcome,
-                    column_types=st.session_state.column_types
+                    column_types=st.session_state.column_types,
+                    interaction_variables=st.session_state.interaction_variables
                 )
 
                 results = estimator.estimate_ate(
@@ -346,7 +630,7 @@ def step_5_run_analysis():
 
                 # Auto-proceed to results
                 if st.button("➡️ View Detailed Results", type="primary", use_container_width=True):
-                    st.session_state.step = 6
+                    st.session_state.step = 7
                     st.rerun()
 
             except Exception as e:
@@ -357,16 +641,16 @@ def step_5_run_analysis():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         if st.button("⬅️ Back to Variables", use_container_width=True):
-            st.session_state.step = 4
+            st.session_state.step = 5
             st.rerun()
 
 
-def step_6_view_results():
-    """Step 6: View results and visualizations"""
-    st.header("Step 6: Results")
+def step_7_view_results():
+    """Step 7: View results and visualizations"""
+    st.header("Step 7: Results")
 
     if st.session_state.results is None:
-        st.warning("⚠️ Please run the analysis first (Step 5)")
+        st.warning("⚠️ Please run the analysis first (Step 6)")
         return
 
     results = st.session_state.results
@@ -407,6 +691,88 @@ def step_6_view_results():
         statistically significant at the 0.05 level. We cannot confidently conclude there is a causal effect.
         """)
 
+    # Display interaction term results prominently
+    if results.get('interaction_results') and len(results['interaction_results']) > 0:
+        st.markdown("---")
+        st.markdown("### 🔍 Interaction Term Analysis")
+        st.markdown("""
+        The following shows the estimated effects of interaction terms on the outcome.
+        **Significant interactions** indicate heterogeneous treatment effects and can reveal
+        important moderating relationships.
+        """)
+
+        interaction_results = results['interaction_results']
+
+        # Summary metrics
+        total_interactions = len(interaction_results)
+        significant_interactions = sum(1 for r in interaction_results if r.get('significant', False))
+        two_way = sum(1 for r in interaction_results if r.get('order') == 2)
+        three_way = sum(1 for r in interaction_results if r.get('order') == 3)
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Interactions", total_interactions)
+        with col2:
+            st.metric("Significant (p<0.05)", significant_interactions)
+        with col3:
+            st.metric("Two-way", two_way)
+        with col4:
+            st.metric("Three-way", three_way)
+
+        # Show significant interactions first
+        significant = [r for r in interaction_results if r.get('significant', False)]
+        non_significant = [r for r in interaction_results if not r.get('significant', False)]
+
+        if significant:
+            st.markdown("#### ✅ Significant Interaction Terms")
+            for result in significant:
+                with st.expander(f"**{result['term']}** (p = {result['p_value']:.4f})", expanded=True):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("LASSO Coefficient", f"{result['lasso_coefficient']:.4f}")
+                    with col2:
+                        st.metric("Simple Coefficient", f"{result['simple_coefficient']:.4f}")
+                    with col3:
+                        st.metric("Correlation with Outcome", f"{result['correlation']:.4f}")
+
+                    st.markdown(f"""
+                    - **Variables:** {', '.join(result['variables'])}
+                    - **Order:** {result['order']}-way interaction
+                    - **Selected by LASSO:** {'Yes' if result.get('selected_by_lasso') else 'No'}
+                    - **Interpretation:** This interaction term has a statistically significant association with the outcome.
+                    """)
+
+        if non_significant:
+            with st.expander(f"📊 Non-Significant Interaction Terms ({len(non_significant)})"):
+                # Create a dataframe for easy viewing
+                import pandas as pd
+                df = pd.DataFrame([{
+                    'Term': r['term'],
+                    'Variables': ' × '.join(r['variables']),
+                    'Order': r['order'],
+                    'LASSO Coef': f"{r['lasso_coefficient']:.4f}",
+                    'Simple Coef': f"{r['simple_coefficient']:.4f}",
+                    'P-value': f"{r['p_value']:.4f}",
+                    'Selected': 'Yes' if r.get('selected_by_lasso') else 'No'
+                } for r in non_significant])
+                st.dataframe(df, use_container_width=True)
+
+        # Export interaction results
+        st.markdown("#### 💾 Export Interaction Results")
+        interaction_df = pd.DataFrame(interaction_results)
+        interaction_csv = interaction_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Interaction Results (CSV)",
+            data=interaction_csv,
+            file_name="interaction_analysis_results.csv",
+            mime="text/csv"
+        )
+
+    elif results.get('interaction_terms') and len(results['interaction_terms']) > 0:
+        st.info("Interaction terms were included in the analysis, but detailed results are not available.")
+    else:
+        st.info("No interaction terms were specified for this analysis.")
+
     # Additional visualizations
     with st.expander("📊 Detailed Results"):
         if 'model_summary' in results:
@@ -437,7 +803,7 @@ def step_6_view_results():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         if st.button("⬅️ Back to Analysis", use_container_width=True):
-            st.session_state.step = 5
+            st.session_state.step = 6
             st.rerun()
     with col2:
         if st.button("🔄 Start New Analysis", use_container_width=True):
