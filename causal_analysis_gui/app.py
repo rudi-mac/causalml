@@ -11,7 +11,7 @@ import networkx as nx
 from components.data_loader import DataLoader
 from components.dag_editor import DAGEditor
 from components.variable_config import VariableConfigurator
-from components.dml_estimator import DMLEstimator
+from components.dml_estimator_doubleml import DMLEstimatorDoubleML
 from utils.graph_utils import GraphValidator
 
 # Page configuration
@@ -31,6 +31,8 @@ if 'column_types' not in st.session_state:
     st.session_state.column_types = {}
 if 'dag' not in st.session_state:
     st.session_state.dag = None
+if 'dag_variables' not in st.session_state:
+    st.session_state.dag_variables = {}  # Dict of variable_name: {'type': 'continuous/binary/categorical/ordinal'}
 if 'treatment' not in st.session_state:
     st.session_state.treatment = None
 if 'outcome' not in st.session_state:
@@ -57,13 +59,11 @@ def main():
             "Current Step:",
             [
                 "0️⃣ Workflow Overview",
-                "1️⃣ Upload Data",
-                "2️⃣ Configure Data Types",
-                "3️⃣ Build Causal DAG",
-                "4️⃣ Specify Interactions",
-                "5️⃣ Specify Variables",
-                "6️⃣ Run DML Analysis",
-                "7️⃣ View Results"
+                "1️⃣ Build Causal DAG",
+                "2️⃣ Upload Data",
+                "3️⃣ Specify Interactions",
+                "4️⃣ Run DML Analysis",
+                "5️⃣ View Results"
             ],
             index=st.session_state.step
         )
@@ -87,19 +87,15 @@ def main():
     if st.session_state.step == 0:
         step_0_workflow_overview()
     elif st.session_state.step == 1:
-        step_1_upload_data()
+        step_1_build_dag()
     elif st.session_state.step == 2:
-        step_2_configure_types()
+        step_2_upload_data()
     elif st.session_state.step == 3:
-        step_3_build_dag()
+        step_3_specify_interactions()
     elif st.session_state.step == 4:
-        step_4_specify_interactions()
+        step_4_run_analysis()
     elif st.session_state.step == 5:
-        step_5_specify_variables()
-    elif st.session_state.step == 6:
-        step_6_run_analysis()
-    elif st.session_state.step == 7:
-        step_7_view_results()
+        step_5_view_results()
 
 
 def step_0_workflow_overview():
@@ -130,25 +126,21 @@ def step_0_workflow_overview():
     with col1:
         st.markdown("""
         #### Steps:
-        1. **Upload Data**
-        2. **Configure Data Types**
-        3. **Build Causal DAG**
-        4. **Specify Interactions**
-        5. **Specify Variables**
-        6. **Run DML Analysis**
-        7. **View Results**
+        1. **Build Causal DAG**
+        2. **Upload Data**
+        3. **Specify Interactions**
+        4. **Run DML Analysis**
+        5. **View Results**
         """)
 
     with col2:
         st.markdown("""
         #### What Happens:
-        - Load your CSV dataset
-        - Identify variable types (continuous, binary, categorical)
-        - Encode your causal assumptions in a DAG
+        - Define treatment & outcome, add variables to DAG with types
+        - Load your CSV dataset matching DAG variables
         - **Select variables for interaction term construction**
-        - Choose treatment and outcome variables
-        - Estimate effects using DML with LASSO/LightGBM
-        - Review significant interaction terms
+        - Estimate effects using DML with LASSO
+        - Review main and interaction effects with significance
         """)
 
     st.markdown("---")
@@ -264,23 +256,94 @@ def step_0_workflow_overview():
             st.rerun()
 
 
-def step_1_upload_data():
-    """Step 1: Upload CSV file"""
-    st.header("Step 1: Upload Your Data")
+def step_1_build_dag():
+    """Step 1: Build the causal DAG with variable definitions"""
+    st.header("Step 1: Build Causal DAG & Define Variables")
 
     st.markdown("""
-    Upload a CSV file containing your data. Each column will become a **node** in the causal DAG.
+    Start by defining your causal model:
+    1. **Specify treatment and outcome variables** (required to start)
+    2. **Add additional variables** to your causal graph
+    3. **Define data types** for each variable (continuous, binary, categorical, ordinal)
+    4. **Draw causal relationships** (directed edges from causes to effects)
+    5. **Drag nodes** to arrange your DAG layout interactively
+    """)
+
+    dag_editor = DAGEditor([], interactive=True)
+    dag, treatment, outcome, variables_config = dag_editor.create_dag_with_variables()
+
+    if dag is not None and treatment and outcome and variables_config:
+        st.session_state.dag = dag
+        st.session_state.treatment = treatment
+        st.session_state.outcome = outcome
+        st.session_state.dag_variables = variables_config
+        st.session_state.column_types = {var: config['type'] for var, config in variables_config.items()}
+
+        # Validate DAG
+        validator = GraphValidator()
+        is_valid, message = validator.validate_dag(dag)
+
+        if is_valid:
+            st.success(f"✅ Valid DAG with {dag.number_of_nodes()} nodes and {dag.number_of_edges()} edges")
+            st.success(f"✅ Treatment: **{treatment}** → Outcome: **{outcome}**")
+
+            # Show summary
+            with st.expander("📋 Variable Configuration Summary"):
+                var_df = pd.DataFrame([
+                    {"Variable": var, "Type": config['type'],
+                     "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
+                    for var, config in variables_config.items()
+                ])
+                st.dataframe(var_df, use_container_width=True)
+
+            # Navigation buttons
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col3:
+                if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                    st.session_state.step = 2
+                    st.rerun()
+        else:
+            st.error(f"❌ Invalid DAG: {message}")
+
+def step_2_upload_data():
+    """Step 2: Upload CSV file"""
+    st.header("Step 2: Upload Your Data")
+
+    if not st.session_state.dag or not st.session_state.treatment or not st.session_state.outcome:
+        st.warning("⚠️ Please build your DAG first (Step 1)")
+        return
+
+    st.markdown(f"""
+    Upload a CSV file with columns matching your DAG variables:
+    **Required columns:** {', '.join(st.session_state.dag_variables.keys())}
 
     **Requirements:**
-    - CSV format with headers
+    - CSV format with headers matching DAG variable names
     - No missing values in key variables
-    - At least one treatment and one outcome variable
+    - Treatment: **{st.session_state.treatment}**
+    - Outcome: **{st.session_state.outcome}**
     """)
 
     data_loader = DataLoader()
     data = data_loader.load_data()
 
     if data is not None:
+        # Validate that data has all required columns
+        required_cols = set(st.session_state.dag_variables.keys())
+        data_cols = set(data.columns)
+        missing_cols = required_cols - data_cols
+        extra_cols = data_cols - required_cols
+
+        if missing_cols:
+            st.error(f"❌ Missing columns in data: {', '.join(missing_cols)}")
+            st.info("Please upload data with columns matching your DAG variables, or go back to Step 1 to modify your DAG.")
+            return
+
+        if extra_cols:
+            st.warning(f"⚠️ Extra columns in data (will be ignored): {', '.join(extra_cols)}")
+            # Keep only DAG columns
+            data = data[list(required_cols)]
+
         st.session_state.data = data
 
         # Show data preview
@@ -294,99 +357,19 @@ def step_1_upload_data():
 
         # Button to proceed
         col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("➡️ Proceed to Configure Data Types", type="primary", use_container_width=True):
-                st.session_state.step = 2
-                st.rerun()
-
-
-def step_2_configure_types():
-    """Step 2: Configure data types for each variable"""
-    st.header("Step 2: Configure Data Types")
-
-    if st.session_state.data is None:
-        st.warning("⚠️ Please upload data first (Step 1)")
-        return
-
-    st.markdown("""
-    Specify the **data type** for each variable. This helps the DML algorithm
-    choose appropriate models and preprocessing steps.
-    """)
-
-    configurator = VariableConfigurator(st.session_state.data)
-    column_types = configurator.configure_types()
-
-    if column_types:
-        st.session_state.column_types = column_types
-
-        # Show summary
-        st.success("✅ Data types configured!")
-
-        with st.expander("📋 Configuration Summary"):
-            type_df = pd.DataFrame([
-                {"Column": col, "Type": dtype}
-                for col, dtype in column_types.items()
-            ])
-            st.dataframe(type_df, use_container_width=True)
-
-        # Navigation buttons
-        col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to Upload", use_container_width=True):
+            if st.button("⬅️ Back to DAG", use_container_width=True):
                 st.session_state.step = 1
                 st.rerun()
         with col3:
-            if st.button("➡️ Proceed to Build DAG", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
                 st.session_state.step = 3
                 st.rerun()
 
 
-def step_3_build_dag():
-    """Step 3: Build the causal DAG"""
-    st.header("Step 3: Build Causal DAG")
-
-    if st.session_state.data is None:
-        st.warning("⚠️ Please upload data first (Step 1)")
-        return
-
-    st.markdown("""
-    Create a **Directed Acyclic Graph (DAG)** representing your causal assumptions.
-    - Each column is a **node**
-    - Draw **directed edges** from causes to effects
-    - The graph must be **acyclic** (no loops)
-    """)
-
-    dag_editor = DAGEditor(list(st.session_state.data.columns))
-    dag = dag_editor.create_dag()
-
-    if dag is not None:
-        st.session_state.dag = dag
-
-        # Validate DAG
-        validator = GraphValidator()
-        is_valid, message = validator.validate_dag(dag)
-
-        if is_valid:
-            st.success(f"✅ Valid DAG with {dag.number_of_nodes()} nodes and {dag.number_of_edges()} edges")
-        else:
-            st.error(f"❌ Invalid DAG: {message}")
-            return
-
-        # Navigation buttons
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            if st.button("⬅️ Back to Data Types", use_container_width=True):
-                st.session_state.step = 2
-                st.rerun()
-        with col3:
-            if is_valid and st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
-                st.session_state.step = 4
-                st.rerun()
-
-
-def step_4_specify_interactions():
-    """Step 4: Specify which variables to use for interaction terms"""
-    st.header("Step 4: Specify Interactions of Interest")
+def step_3_specify_interactions():
+    """Step 3: Specify which variables to use for interaction terms"""
+    st.header("Step 3: Specify Interactions of Interest")
 
     if st.session_state.dag is None:
         st.warning("⚠️ Please create a DAG first (Step 3)")
@@ -475,12 +458,12 @@ def step_4_specify_interactions():
         # Navigation buttons
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to DAG", use_container_width=True):
-                st.session_state.step = 3
+            if st.button("⬅️ Back to Upload Data", use_container_width=True):
+                st.session_state.step = 2
                 st.rerun()
         with col3:
-            if len(selected_vars) >= 2 and st.button("➡️ Proceed to Specify Variables", type="primary", use_container_width=True):
-                st.session_state.step = 5
+            if len(selected_vars) >= 2 and st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
+                st.session_state.step = 4
                 st.rerun()
 
     else:
@@ -489,95 +472,30 @@ def step_4_specify_interactions():
         # Navigation buttons (without proceed)
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to DAG", use_container_width=True):
-                st.session_state.step = 3
+            if st.button("⬅️ Back to Upload Data", use_container_width=True):
+                st.session_state.step = 2
                 st.rerun()
 
 
-def step_5_specify_variables():
-    """Step 5: Specify treatment and outcome variables"""
-    st.header("Step 5: Specify Treatment & Outcome")
-
-    if st.session_state.dag is None:
-        st.warning("⚠️ Please create a DAG first (Step 3)")
-        return
-
-    st.markdown("""
-    Select which variables represent:
-    - **Treatment**: The intervention or exposure of interest
-    - **Outcome**: The result or effect you want to measure
-    """)
-
-    # Treatment selection
-    st.subheader("🎯 Treatment Variable")
-    treatment = st.selectbox(
-        "Select the treatment variable:",
-        options=list(st.session_state.data.columns),
-        index=None,
-        help="The variable whose causal effect you want to estimate"
-    )
-
-    # Outcome selection
-    st.subheader("📊 Outcome Variable")
-    outcome = st.selectbox(
-        "Select the outcome variable:",
-        options=list(st.session_state.data.columns),
-        index=None,
-        help="The variable that is affected by the treatment"
-    )
-
-    if treatment and outcome:
-        if treatment == outcome:
-            st.error("❌ Treatment and outcome must be different variables!")
-            return
-
-        st.session_state.treatment = treatment
-        st.session_state.outcome = outcome
-
-        # Show confounders from DAG
-        dag = st.session_state.dag
-
-        # Find confounders (common causes of treatment and outcome)
-        confounders = set()
-        for node in dag.nodes():
-            if node != treatment and node != outcome:
-                if dag.has_edge(node, treatment) and dag.has_edge(node, outcome):
-                    confounders.add(node)
-
-        if confounders:
-            st.info(f"📌 Identified confounders from DAG: {', '.join(confounders)}")
-        else:
-            st.warning("⚠️ No confounders identified. Make sure your DAG includes common causes.")
-
-        # Show causal path
-        st.success(f"✅ Treatment: **{treatment}** → Outcome: **{outcome}**")
-
-        # Navigation buttons
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            if st.button("⬅️ Back to Interactions", use_container_width=True):
-                st.session_state.step = 4
-                st.rerun()
-        with col3:
-            if st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
-                st.session_state.step = 6
-                st.rerun()
-
-
-def step_6_run_analysis():
-    """Step 6: Run DML analysis"""
-    st.header("Step 6: Run DML Analysis")
+def step_4_run_analysis():
+    """Step 4: Run DML analysis"""
+    st.header("Step 4: Run DML Analysis")
 
     if st.session_state.treatment is None or st.session_state.outcome is None:
-        st.warning("⚠️ Please specify treatment and outcome variables (Step 5)")
+        st.warning("⚠️ Please build your DAG with treatment and outcome (Step 1)")
+        return
+
+    if st.session_state.data is None:
+        st.warning("⚠️ Please upload data (Step 2)")
         return
 
     st.markdown("""
     Ready to estimate the causal effect! The analysis will:
     1. Identify confounders from the DAG
-    2. Use Double Machine Learning with LASSO
-    3. Estimate the Average Treatment Effect (ATE)
-    4. Provide confidence intervals
+    2. Use Double Machine Learning (DoubleML) with LASSO
+    3. Estimate main effect (treatment → outcome)
+    4. Estimate all interaction effects
+    5. Provide confidence intervals and p-values with sensitivity analysis
     """)
 
     # Model configuration
@@ -604,7 +522,7 @@ def step_6_run_analysis():
     if st.button("🚀 Run DML Analysis", type="primary", use_container_width=True):
         with st.spinner("Running Double Machine Learning... This may take a few minutes."):
             try:
-                estimator = DMLEstimator(
+                estimator = DMLEstimatorDoubleML(
                     data=st.session_state.data,
                     dag=st.session_state.dag,
                     treatment=st.session_state.treatment,
@@ -630,7 +548,7 @@ def step_6_run_analysis():
 
                 # Auto-proceed to results
                 if st.button("➡️ View Detailed Results", type="primary", use_container_width=True):
-                    st.session_state.step = 7
+                    st.session_state.step = 5
                     st.rerun()
 
             except Exception as e:
@@ -640,17 +558,17 @@ def step_6_run_analysis():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Variables", use_container_width=True):
-            st.session_state.step = 5
+        if st.button("⬅️ Back to Interactions", use_container_width=True):
+            st.session_state.step = 3
             st.rerun()
 
 
-def step_7_view_results():
-    """Step 7: View results and visualizations"""
-    st.header("Step 7: Results")
+def step_5_view_results():
+    """Step 5: View results and visualizations"""
+    st.header("Step 5: Results")
 
     if st.session_state.results is None:
-        st.warning("⚠️ Please run the analysis first (Step 6)")
+        st.warning("⚠️ Please run the analysis first (Step 4)")
         return
 
     results = st.session_state.results
@@ -727,19 +645,23 @@ def step_7_view_results():
             st.markdown("#### ✅ Significant Interaction Terms")
             for result in significant:
                 with st.expander(f"**{result['term']}** (p = {result['p_value']:.4f})", expanded=True):
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("LASSO Coefficient", f"{result['lasso_coefficient']:.4f}")
+                        st.metric("Coefficient", f"{result['coefficient']:.4f}")
                     with col2:
-                        st.metric("Simple Coefficient", f"{result['simple_coefficient']:.4f}")
+                        st.metric("Std Error", f"{result['se']:.4f}")
                     with col3:
-                        st.metric("Correlation with Outcome", f"{result['correlation']:.4f}")
+                        st.metric("95% CI", f"[{result['ci_lower']:.3f}, {result['ci_upper']:.3f}]")
+                    with col4:
+                        st.metric("RV %", f"{result.get('rv_percent', 0):.2f}%")
 
                     st.markdown(f"""
                     - **Variables:** {', '.join(result['variables'])}
                     - **Order:** {result['order']}-way interaction
-                    - **Selected by LASSO:** {'Yes' if result.get('selected_by_lasso') else 'No'}
-                    - **Interpretation:** This interaction term has a statistically significant association with the outcome.
+                    - **P-value:** {result['p_value']:.4f}
+                    - **Interpretation:** This interaction term has a statistically significant effect on the outcome.
+                      The coefficient represents the additional effect when these variables interact.
+                    - **Robustness (RV%):** Percentage of variation explained by unobserved confounders needed to nullify this effect.
                     """)
 
         if non_significant:
@@ -750,10 +672,11 @@ def step_7_view_results():
                     'Term': r['term'],
                     'Variables': ' × '.join(r['variables']),
                     'Order': r['order'],
-                    'LASSO Coef': f"{r['lasso_coefficient']:.4f}",
-                    'Simple Coef': f"{r['simple_coefficient']:.4f}",
+                    'Coefficient': f"{r['coefficient']:.4f}",
+                    'Std Error': f"{r['se']:.4f}",
                     'P-value': f"{r['p_value']:.4f}",
-                    'Selected': 'Yes' if r.get('selected_by_lasso') else 'No'
+                    'CI Lower': f"{r['ci_lower']:.3f}",
+                    'CI Upper': f"{r['ci_upper']:.3f}"
                 } for r in non_significant])
                 st.dataframe(df, use_container_width=True)
 
@@ -803,7 +726,7 @@ def step_7_view_results():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         if st.button("⬅️ Back to Analysis", use_container_width=True):
-            st.session_state.step = 6
+            st.session_state.step = 4
             st.rerun()
     with col2:
         if st.button("🔄 Start New Analysis", use_container_width=True):
