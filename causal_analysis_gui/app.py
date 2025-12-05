@@ -70,6 +70,30 @@ def main():
         st.session_state.step = int(step[0])
 
         st.markdown("---")
+
+        # Restart session button with confirmation
+        if 'confirm_restart' not in st.session_state:
+            st.session_state.confirm_restart = False
+
+        if st.button("🔄 Restart Session", type="secondary", use_container_width=True):
+            st.session_state.confirm_restart = True
+            st.rerun()
+
+        if st.session_state.confirm_restart:
+            st.warning("⚠️ Are you sure? All progress will be lost.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes, Restart", use_container_width=True):
+                    # Clear all session state
+                    for key in list(st.session_state.keys()):
+                        del st.session_state[key]
+                    st.rerun()
+            with col2:
+                if st.button("❌ Cancel", use_container_width=True):
+                    st.session_state.confirm_restart = False
+                    st.rerun()
+
+        st.markdown("---")
         st.markdown("### About")
         st.markdown("""
         **Graph-Based DML** combines:
@@ -274,6 +298,75 @@ def step_1_build_dag():
     if 'dag_creation_method' not in st.session_state:
         st.session_state.dag_creation_method = None
 
+    # Check if DAG already exists (user returning to this step)
+    if (st.session_state.dag is not None and
+        st.session_state.treatment is not None and
+        st.session_state.outcome is not None and
+        st.session_state.dag_variables):
+
+        st.success("✅ DAG already configured!")
+        st.success(f"✅ Treatment: **{st.session_state.treatment}** → Outcome: **{st.session_state.outcome}**")
+
+        # Show summary
+        st.markdown("### Current DAG Configuration")
+
+        # Visualize existing DAG
+        from components.dag_editor import DAGEditor
+        dag_editor = DAGEditor([])
+
+        if st.session_state.dag_creation_method == "build":
+            fig = dag_editor._visualize_dag_interactive(
+                st.session_state.dag,
+                treatment=st.session_state.treatment,
+                outcome=st.session_state.outcome
+            )
+        else:
+            fig = dag_editor._visualize_dag(st.session_state.dag)
+        st.pyplot(fig)
+
+        # Show variable configuration
+        with st.expander("📋 Variable Configuration Summary", expanded=True):
+            var_df = pd.DataFrame([
+                {"Variable": var, "Type": config['type'],
+                 "Role": "Treatment" if var == st.session_state.treatment else ("Outcome" if var == st.session_state.outcome else "Covariate")}
+                for var, config in st.session_state.dag_variables.items()
+            ])
+            st.dataframe(var_df, use_container_width=True)
+
+        # Option to modify or proceed
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔄 Modify DAG", use_container_width=True):
+                # Reset DAG-related session state to start over
+                st.session_state.dag = None
+                st.session_state.treatment = None
+                st.session_state.outcome = None
+                st.session_state.dag_variables = {}
+                st.session_state.dag_creation_method = None
+                st.session_state.column_types = {}
+                # Clear builder-specific state
+                if 'dag_builder_vars' in st.session_state:
+                    del st.session_state.dag_builder_vars
+                if 'dag_builder_edges' in st.session_state:
+                    del st.session_state.dag_builder_edges
+                if 'dag_builder_treatment' in st.session_state:
+                    del st.session_state.dag_builder_treatment
+                if 'dag_builder_outcome' in st.session_state:
+                    del st.session_state.dag_builder_outcome
+                # Clear paste-specific state
+                if 'pasted_dag_config' in st.session_state:
+                    del st.session_state.pasted_dag_config
+                if 'pasted_dag' in st.session_state:
+                    del st.session_state.pasted_dag
+                if 'pasted_dag_nodes' in st.session_state:
+                    del st.session_state.pasted_dag_nodes
+                st.rerun()
+        with col3:
+            if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                st.session_state.step = 2
+                st.rerun()
+        return
+
     # Ask user to choose method if not yet selected
     if st.session_state.dag_creation_method is None:
         st.markdown("""
@@ -469,16 +562,23 @@ def step_1_paste_dag():
                 st.session_state.outcome = outcome
                 st.session_state.dag_variables = variables_config
                 st.session_state.column_types = {var: config['type'] for var, config in variables_config.items()}
+                st.rerun()
+
+            # Show navigation button if DAG is already configured
+            # This will show after the confirm button is clicked and page reruns
+            if (st.session_state.dag is not None and
+                st.session_state.treatment is not None and
+                st.session_state.outcome is not None):
 
                 st.success(f"✅ DAG configured successfully!")
-                st.success(f"✅ Treatment: **{treatment}** → Outcome: **{outcome}**")
+                st.success(f"✅ Treatment: **{st.session_state.treatment}** → Outcome: **{st.session_state.outcome}**")
 
                 # Show summary
                 with st.expander("📋 Variable Configuration Summary"):
                     var_df = pd.DataFrame([
                         {"Variable": var, "Type": config['type'],
-                         "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
-                        for var, config in variables_config.items()
+                         "Role": "Treatment" if var == st.session_state.treatment else ("Outcome" if var == st.session_state.outcome else "Covariate")}
+                        for var, config in st.session_state.dag_variables.items()
                     ])
                     st.dataframe(var_df, use_container_width=True)
 
@@ -554,6 +654,32 @@ def step_2_upload_data():
 
     if not st.session_state.dag or not st.session_state.treatment or not st.session_state.outcome:
         st.warning("⚠️ Please build your DAG first (Step 1)")
+        return
+
+    # Check if data already exists (user returning to this step)
+    if st.session_state.data is not None:
+        st.success(f"✅ Data already loaded! Shape: {st.session_state.data.shape}")
+
+        with st.expander("📊 Data Preview", expanded=True):
+            st.dataframe(st.session_state.data.head(20), use_container_width=True)
+
+        with st.expander("📈 Basic Statistics"):
+            st.dataframe(st.session_state.data.describe(), use_container_width=True)
+
+        # Option to upload new data or proceed
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            if st.button("⬅️ Back to DAG", use_container_width=True):
+                st.session_state.step = 1
+                st.rerun()
+        with col2:
+            if st.button("🔄 Upload New Data", use_container_width=True):
+                st.session_state.data = None
+                st.rerun()
+        with col3:
+            if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
+                st.session_state.step = 3
+                st.rerun()
         return
 
     st.markdown(f"""

@@ -278,7 +278,7 @@ class DAGEditor:
 
     def _visualize_dag(self, dag):
         """
-        Visualize the DAG using matplotlib
+        Visualize the DAG using matplotlib with hierarchical layout via pydot
 
         Args:
             dag (nx.DiGraph): The DAG to visualize
@@ -288,11 +288,17 @@ class DAGEditor:
         """
         fig, ax = plt.subplots(figsize=(12, 8))
 
-        # Use hierarchical layout if possible
+        # Use pydot for hierarchical layout (cleaner for DAGs)
         try:
-            pos = nx.spring_layout(dag, k=2, iterations=50)
+            # Use graphviz via pydot for hierarchical layout
+            from networkx.drawing.nx_pydot import graphviz_layout
+            pos = graphviz_layout(dag, prog='dot')
         except:
-            pos = nx.circular_layout(dag)
+            # Fallback to spring layout if pydot/graphviz not available
+            try:
+                pos = nx.spring_layout(dag, k=2, iterations=50, seed=42)
+            except:
+                pos = nx.circular_layout(dag)
 
         # Draw nodes
         nx.draw_networkx_nodes(
@@ -536,15 +542,21 @@ class DAGEditor:
         """
         fig, ax = plt.subplots(figsize=(14, 10))
 
-        # Use hierarchical layout
+        # Use pydot for hierarchical layout (cleaner for DAGs)
         try:
-            # Try to use a hierarchical layout if treatment->outcome path exists
-            if treatment and outcome and dag.has_node(treatment) and dag.has_node(outcome):
-                pos = nx.spring_layout(dag, k=3, iterations=100, seed=42)
-            else:
-                pos = nx.spring_layout(dag, k=2, iterations=50, seed=42)
+            # Use graphviz via pydot for hierarchical layout
+            from networkx.drawing.nx_pydot import graphviz_layout
+            pos = graphviz_layout(dag, prog='dot')
         except:
-            pos = nx.circular_layout(dag)
+            # Fallback to spring layout if pydot/graphviz not available
+            try:
+                # Try to use a hierarchical layout if treatment->outcome path exists
+                if treatment and outcome and dag.has_node(treatment) and dag.has_node(outcome):
+                    pos = nx.spring_layout(dag, k=3, iterations=100, seed=42)
+                else:
+                    pos = nx.spring_layout(dag, k=2, iterations=50, seed=42)
+            except:
+                pos = nx.circular_layout(dag)
 
         # Prepare node colors
         node_colors = []
