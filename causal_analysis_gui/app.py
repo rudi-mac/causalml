@@ -102,6 +102,12 @@ def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
     st.header("📚 Workflow Overview: Graph-Based Double Machine Learning")
 
+    # Display logo at the top
+    try:
+        st.image("Logo.png", use_container_width=True)
+    except Exception:
+        pass  # If logo not found, continue without it
+
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
 
@@ -145,39 +151,43 @@ def step_0_workflow_overview():
 
     st.markdown("---")
 
-    # Workflow diagram (text-based representation)
+    # Workflow diagram (using image)
     st.subheader("🔄 Visual Workflow")
 
-    st.markdown("""
-    ```
-    ┌─────────────────────────────────────────────────────┐
-    │                                                     │
-    │   Identify Phenomenon & Target Theory              │
-    │                                                     │
-    └────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-    ┌─────────────────────────────────────────────────────┐
-    │  GRAPH-BASED DOUBLE MACHINE LEARNING                │
-    │                                                     │
-    │  1. Encode Existing Knowledge into DAG              │
-    │  2. Collect and Pre-Process Data                    │
-    │  3. Specify Learners (e.g., LASSO)                 │
-    │  4. Specify Interactions of Interest   ◄────────┐  │
-    │  5. Fit Treatment & Outcome Models                  │
-    │  6. Perform Sensitivity Analysis                    │
-    │  7. Select Robust Interactions                      │
-    │                                                     │
-    └────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-    ┌─────────────────────────────────────────────────────┐
-    │                                                     │
-    │   Formulate Implications for Theory and Practice    │
-    │                                                     │
-    └─────────────────────────────────────────────────────┘
-    ```
-    """)
+    try:
+        st.image("Workflow_Diagram.png", use_container_width=True)
+    except Exception:
+        # Fallback to text-based representation if image not found
+        st.markdown("""
+        ```
+        ┌─────────────────────────────────────────────────────┐
+        │                                                     │
+        │   Identify Phenomenon & Target Theory              │
+        │                                                     │
+        └────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+        ┌─────────────────────────────────────────────────────┐
+        │  GRAPH-BASED DOUBLE MACHINE LEARNING                │
+        │                                                     │
+        │  1. Encode Existing Knowledge into DAG              │
+        │  2. Collect and Pre-Process Data                    │
+        │  3. Specify Learners (e.g., LASSO)                 │
+        │  4. Specify Interactions of Interest   ◄────────┐  │
+        │  5. Fit Treatment & Outcome Models                  │
+        │  6. Perform Sensitivity Analysis                    │
+        │  7. Select Robust Interactions                      │
+        │                                                     │
+        └────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+        ┌─────────────────────────────────────────────────────┐
+        │                                                     │
+        │   Formulate Implications for Theory and Practice    │
+        │                                                     │
+        └─────────────────────────────────────────────────────┘
+        ```
+        """)
 
     st.markdown("---")
 
@@ -259,6 +269,239 @@ def step_0_workflow_overview():
 def step_1_build_dag():
     """Step 1: Build the causal DAG with variable definitions"""
     st.header("Step 1: Build Causal DAG & Define Variables")
+
+    # Initialize DAG method selection in session state
+    if 'dag_creation_method' not in st.session_state:
+        st.session_state.dag_creation_method = None
+
+    # Ask user to choose method if not yet selected
+    if st.session_state.dag_creation_method is None:
+        st.markdown("""
+        Choose how you want to define your causal DAG:
+        """)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("📝 Paste DAG Syntax", use_container_width=True, type="secondary"):
+                st.session_state.dag_creation_method = "paste"
+                st.rerun()
+
+        with col2:
+            if st.button("🔨 Build DAG Step-by-Step", use_container_width=True, type="primary"):
+                st.session_state.dag_creation_method = "build"
+                st.rerun()
+
+        st.markdown("---")
+        st.info("""
+        **Paste DAG Syntax**: If you already have your DAG structure, paste it using NetworkX `add_nodes` and `add_edges` format.
+
+        **Build DAG Step-by-Step**: Interactive builder to define variables and draw causal relationships.
+        """)
+
+    elif st.session_state.dag_creation_method == "paste":
+        step_1_paste_dag()
+    elif st.session_state.dag_creation_method == "build":
+        step_1_build_dag_interactive()
+
+
+def step_1_paste_dag():
+    """Step 1 (Paste method): Paste DAG using NetworkX syntax"""
+    st.markdown("### Paste DAG Syntax")
+
+    # Button to switch method
+    if st.button("🔄 Switch to Interactive Builder", type="secondary"):
+        st.session_state.dag_creation_method = "build"
+        st.rerun()
+
+    st.markdown("""
+    Paste your DAG structure using NetworkX DiGraph format with `add_nodes` and `add_edges` commands.
+    """)
+
+    with st.expander("📖 Format Guide & Example"):
+        st.markdown("""
+        Use NetworkX DiGraph format:
+        ```python
+        G.add_nodes_from(['Education', 'Age', 'Gender', 'Salary'])
+        G.add_edges_from([
+            ('Education', 'Salary'),
+            ('Age', 'Salary'),
+            ('Gender', 'Salary'),
+            ('Age', 'Education')
+        ])
+        ```
+
+        **Rules:**
+        - Use `add_nodes_from([...])` with a list of node names
+        - Use `add_edges_from([...])` with a list of tuples (source, target)
+        - Each edge is a tuple: `('Cause', 'Effect')`
+        - Node names must be strings
+        """)
+
+    # Text area for DAG syntax
+    dag_syntax = st.text_area(
+        "Paste your DAG syntax:",
+        height=200,
+        placeholder="G.add_nodes_from(['X', 'Y', 'Z'])\nG.add_edges_from([('X', 'Y'), ('X', 'Z')])",
+        key="dag_syntax_input"
+    )
+
+    if dag_syntax:
+        try:
+            # Parse the DAG syntax
+            import re
+
+            # Extract nodes
+            nodes_match = re.search(r'add_nodes_from\s*\(\s*\[(.*?)\]', dag_syntax, re.DOTALL)
+            # Extract edges
+            edges_match = re.search(r'add_edges_from\s*\(\s*\[(.*?)\]', dag_syntax, re.DOTALL)
+
+            if not nodes_match:
+                st.error("❌ No `add_nodes_from` statement found. Please include node definitions.")
+                return
+
+            # Parse nodes
+            nodes_str = nodes_match.group(1)
+            nodes = re.findall(r"['\"]([^'\"]+)['\"]", nodes_str)
+
+            if not nodes:
+                st.error("❌ No nodes found. Make sure nodes are quoted strings.")
+                return
+
+            # Parse edges
+            edges = []
+            if edges_match:
+                edges_str = edges_match.group(1)
+                edge_tuples = re.findall(r"\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)", edges_str)
+                edges = [(src, tgt) for src, tgt in edge_tuples]
+
+                # Validate that all edge nodes are in the node list
+                edge_nodes = set()
+                for src, tgt in edges:
+                    edge_nodes.add(src)
+                    edge_nodes.add(tgt)
+
+                invalid_nodes = edge_nodes - set(nodes)
+                if invalid_nodes:
+                    st.error(f"❌ Edge nodes not in node list: {invalid_nodes}")
+                    return
+
+            # Build DAG
+            dag = nx.DiGraph()
+            dag.add_nodes_from(nodes)
+            if edges:
+                dag.add_edges_from(edges)
+
+            # Validate DAG
+            validator = GraphValidator()
+            is_valid, message = validator.validate_dag(dag)
+
+            if not is_valid:
+                st.error(f"❌ Invalid DAG: {message}")
+                return
+
+            st.success(f"✅ Parsed DAG with {dag.number_of_nodes()} nodes and {dag.number_of_edges()} edges")
+
+            # Visualize DAG
+            st.markdown("#### DAG Visualization")
+            from components.dag_editor import DAGEditor
+            dag_editor = DAGEditor(nodes)
+            fig = dag_editor._visualize_dag(dag)
+            st.pyplot(fig)
+
+            st.markdown("---")
+
+            # Now ask user to define data types, treatment, and outcome
+            st.markdown("### Define Variable Configuration")
+
+            # Initialize configuration in session state
+            if 'pasted_dag_config' not in st.session_state:
+                st.session_state.pasted_dag_config = {node: {'type': 'continuous'} for node in nodes}
+            if 'pasted_dag' not in st.session_state:
+                st.session_state.pasted_dag = dag
+            if 'pasted_dag_nodes' not in st.session_state:
+                st.session_state.pasted_dag_nodes = nodes
+
+            # Treatment selection
+            st.subheader("🎯 Select Treatment Variable")
+            treatment = st.selectbox(
+                "Treatment:",
+                options=nodes,
+                index=0 if 'pasted_treatment' not in st.session_state else nodes.index(st.session_state.get('pasted_treatment', nodes[0])),
+                key="pasted_treatment_select"
+            )
+
+            # Outcome selection
+            st.subheader("📊 Select Outcome Variable")
+            outcome_options = [n for n in nodes if n != treatment]
+            outcome = st.selectbox(
+                "Outcome:",
+                options=outcome_options,
+                index=0 if 'pasted_outcome' not in st.session_state else (outcome_options.index(st.session_state.get('pasted_outcome', outcome_options[0])) if st.session_state.get('pasted_outcome') in outcome_options else 0),
+                key="pasted_outcome_select"
+            )
+
+            st.markdown("---")
+
+            # Data type configuration for all nodes
+            st.subheader("📝 Define Data Types for All Variables")
+
+            variables_config = {}
+
+            for node in nodes:
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.markdown(f"**{node}**")
+                with col2:
+                    var_type = st.selectbox(
+                        f"Data type:",
+                        options=['continuous', 'binary', 'categorical', 'ordinal'],
+                        index=0,
+                        key=f"pasted_var_type_{node}",
+                        label_visibility="collapsed"
+                    )
+                    variables_config[node] = {'type': var_type}
+
+            # Save configuration button
+            if st.button("✅ Confirm DAG Configuration", type="primary", use_container_width=True):
+                st.session_state.dag = dag
+                st.session_state.treatment = treatment
+                st.session_state.outcome = outcome
+                st.session_state.dag_variables = variables_config
+                st.session_state.column_types = {var: config['type'] for var, config in variables_config.items()}
+
+                st.success(f"✅ DAG configured successfully!")
+                st.success(f"✅ Treatment: **{treatment}** → Outcome: **{outcome}**")
+
+                # Show summary
+                with st.expander("📋 Variable Configuration Summary"):
+                    var_df = pd.DataFrame([
+                        {"Variable": var, "Type": config['type'],
+                         "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
+                        for var, config in variables_config.items()
+                    ])
+                    st.dataframe(var_df, use_container_width=True)
+
+                # Navigation button
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col3:
+                    if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                        st.session_state.step = 2
+                        st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Error parsing DAG syntax: {str(e)}")
+            st.exception(e)
+
+
+def step_1_build_dag_interactive():
+    """Step 1 (Build method): Build the causal DAG interactively with variable definitions"""
+    st.markdown("### Build DAG Interactively")
+
+    # Button to switch method
+    if st.button("🔄 Switch to Paste DAG Syntax", type="secondary"):
+        st.session_state.dag_creation_method = "paste"
+        st.rerun()
 
     st.markdown("""
     Start by defining your causal model:
