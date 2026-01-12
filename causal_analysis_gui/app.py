@@ -39,6 +39,10 @@ if 'outcome' not in st.session_state:
     st.session_state.outcome = None
 if 'interaction_variables' not in st.session_state:
     st.session_state.interaction_variables = []
+if 'two_way_interaction_variables' not in st.session_state:
+    st.session_state.two_way_interaction_variables = []
+if 'three_way_interaction_variables' not in st.session_state:
+    st.session_state.three_way_interaction_variables = []
 if 'results' not in st.session_state:
     st.session_state.results = None
 
@@ -571,26 +575,54 @@ def step_2_upload_data():
     data = data_loader.load_data()
 
     if data is not None:
-        # Validate that data has all required columns
+        # Validate that data has all required columns with strict (case-sensitive) matching
         required_cols = set(st.session_state.dag_variables.keys())
         data_cols = set(data.columns)
+
+        # Strict matching: exact name including case
+        matched_cols = required_cols & data_cols
         missing_cols = required_cols - data_cols
         extra_cols = data_cols - required_cols
 
+        # Display column matching overview
+        st.subheader("📋 Column Matching Overview")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("✅ Matched Columns", len(matched_cols))
+        with col2:
+            st.metric("❌ Missing DAG Nodes", len(missing_cols))
+        with col3:
+            st.metric("⚠️ Extra Columns", len(extra_cols))
+
+        # Show detailed matching results
+        with st.expander("📊 Detailed Matching Results", expanded=True):
+            if matched_cols:
+                st.markdown("**✅ Matched columns (CSV ↔ DAG nodes):**")
+                for col in sorted(matched_cols):
+                    st.markdown(f"- `{col}`")
+
+            if missing_cols:
+                st.markdown("**❌ Missing DAG nodes (not found in CSV):**")
+                for col in sorted(missing_cols):
+                    st.markdown(f"- `{col}`")
+
+            if extra_cols:
+                st.markdown("**⚠️ Extra columns (in CSV but not in DAG):**")
+                for col in sorted(extra_cols):
+                    st.markdown(f"- `{col}`")
+
         if missing_cols:
-            st.error(f"❌ Missing columns in data: {', '.join(missing_cols)}")
-            st.info("Please upload data with columns matching your DAG variables, or go back to Step 1 to modify your DAG.")
+            st.error(f"❌ Cannot proceed: {len(missing_cols)} DAG node(s) missing from uploaded CSV.")
+            st.info("💡 Please upload a CSV with columns that exactly match your DAG variable names (case-sensitive), or go back to Step 1 to modify your DAG.")
             return
 
-        if extra_cols:
-            st.warning(f"⚠️ Extra columns in data (will be ignored): {', '.join(extra_cols)}")
-            # Keep only DAG columns
-            data = data[list(required_cols)]
-
+        # Keep only DAG columns
+        data = data[list(matched_cols)]
         st.session_state.data = data
 
         # Show data preview
-        st.success(f"✅ Data loaded successfully! Shape: {data.shape}")
+        st.success(f"✅ Data processed successfully! Shape: {data.shape} | Columns used: {len(matched_cols)}")
 
         with st.expander("📊 Data Preview", expanded=True):
             st.dataframe(data.head(20), use_container_width=True)
@@ -618,23 +650,37 @@ def step_3_specify_interactions():
         st.warning("⚠️ Please create a DAG first (Step 3)")
         return
 
-    st.markdown("""
-    Select variables to construct **interaction terms**. The tool will create:
-    - **Two-way interactions**: All pairwise combinations (e.g., A×B, A×C, B×C)
-    - **Three-way interactions**: All three-variable combinations (e.g., A×B×C)
+    if st.session_state.treatment is None:
+        st.warning("⚠️ Please specify a treatment variable first (Step 1)")
+        return
 
-    ### Why Select a Subset?
-    While Graph-Based DML can handle many interaction terms, focusing on theoretically-relevant
-    variables helps maintain interpretability and computational efficiency.
+    treatment = st.session_state.treatment
+
+    st.markdown(f"""
+    Select variables to construct **interaction terms** with the **treatment variable: `{treatment}`**.
+
+    ⚠️ **Important:** The treatment variable is **always included** in all interaction terms.
+
+    - **Two-way interactions**: {treatment} × *selected variable* (e.g., {treatment} × Age, {treatment} × Gender)
+    - **Three-way interactions**: {treatment} × *two-way variable* × *three-way variable* (e.g., {treatment} × Age × Gender)
+
+    ### How It Works
+    1. Select variables for **two-way interactions** (each creates: {treatment} × variable)
+    2. Select variables for **three-way interactions** (each creates: {treatment} × two_way_var × three_way_var)
+
+    ### Categorical Variables
+    If a variable is categorical with multiple categories (e.g., Race: A, B, C), one interaction term
+    will be created per category (e.g., {treatment} × Race_A, {treatment} × Race_B, {treatment} × Race_C).
 
     **Tip:** Include variables that are root nodes in your DAG (confounders, not mediators).
     """)
 
-    # Get all variables from DAG
-    all_variables = list(st.session_state.dag.nodes())
+    # Get all variables from DAG (exclude treatment and outcome)
+    all_variables = [v for v in list(st.session_state.dag.nodes())
+                     if v != st.session_state.treatment and v != st.session_state.outcome]
 
     if not all_variables:
-        st.error("❌ No variables found in DAG")
+        st.error("❌ No variables available for interactions (only treatment and outcome in DAG)")
         return
 
     # Identify root nodes (variables with no predecessors) - these are good candidates
@@ -642,82 +688,107 @@ def step_3_specify_interactions():
 
     st.info(f"💡 **Root nodes in your DAG** (good candidates for interactions): {', '.join(root_nodes) if root_nodes else 'None'}")
 
-    st.subheader("Select Variables for Interaction Terms")
+    st.subheader("Select Interaction Variables")
 
-    # Multi-select for interaction variables
-    selected_vars = st.multiselect(
-        "Choose variables to include in interaction terms:",
+    # Two-way interaction variables
+    st.markdown("#### 1️⃣ Two-Way Interactions")
+    st.markdown(f"Each selected variable will create one interaction: **{treatment} × variable**")
+
+    two_way_vars = st.multiselect(
+        "Select variables for two-way interactions:",
         options=all_variables,
-        default=st.session_state.interaction_variables if st.session_state.interaction_variables else None,
-        help="Select 2 or more variables. The tool will create all possible 2-way and 3-way interactions."
+        default=st.session_state.two_way_interaction_variables if st.session_state.two_way_interaction_variables else None,
+        help=f"Each variable creates a two-way interaction with {treatment}",
+        key="two_way_select"
     )
 
-    if selected_vars:
-        st.session_state.interaction_variables = selected_vars
+    if two_way_vars:
+        st.session_state.two_way_interaction_variables = two_way_vars
 
-        # Calculate number of interactions that will be created
-        from itertools import combinations
-        n_vars = len(selected_vars)
-        n_two_way = len(list(combinations(selected_vars, 2)))
-        n_three_way = len(list(combinations(selected_vars, 3))) if n_vars >= 3 else 0
+    # Three-way interaction variables
+    st.markdown("#### 2️⃣ Three-Way Interactions")
+    st.markdown(f"""
+    Each selected variable will be combined with **each two-way interaction variable** to create:
+    **{treatment} × two_way_var × three_way_var**
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Variables Selected", n_vars)
-        with col2:
-            st.metric("Two-Way Interactions", n_two_way)
-        with col3:
-            st.metric("Three-Way Interactions", n_three_way)
+    Example: If you select Age for two-way and Gender for three-way, this creates:
+    - {treatment} × Age × Gender
+    """)
 
-        # Show preview of interactions
+    three_way_vars = st.multiselect(
+        "Select variables for three-way interactions:",
+        options=all_variables,
+        default=st.session_state.three_way_interaction_variables if st.session_state.three_way_interaction_variables else None,
+        help=f"Each variable will be combined with two-way variables to create three-way interactions with {treatment}",
+        key="three_way_select"
+    )
+
+    if three_way_vars:
+        st.session_state.three_way_interaction_variables = three_way_vars
+
+    # Calculate interaction counts
+    n_two_way = len(two_way_vars)
+    n_three_way = len(two_way_vars) * len(three_way_vars) if (two_way_vars and three_way_vars) else 0
+
+    # Show metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Two-Way Variables", len(two_way_vars))
+    with col2:
+        st.metric("Three-Way Variables", len(three_way_vars))
+    with col3:
+        st.metric("Total Interactions", n_two_way + n_three_way)
+
+    # Show preview of interactions
+    if two_way_vars or three_way_vars:
         with st.expander("📋 Preview of Interaction Terms", expanded=True):
-            st.markdown("**Two-way interactions:**")
-            two_way_interactions = [f"{a} × {b}" for a, b in combinations(selected_vars, 2)]
-            if two_way_interactions:
-                # Display in columns
-                cols = st.columns(3)
-                for i, interaction in enumerate(two_way_interactions):
-                    cols[i % 3].markdown(f"- {interaction}")
-            else:
-                st.markdown("*None (need at least 2 variables)*")
+            if two_way_vars:
+                st.markdown("**Two-way interactions:**")
+                for var in two_way_vars:
+                    var_type = st.session_state.dag_variables.get(var, {}).get('type', 'unknown')
+                    if var_type == 'categorical':
+                        st.markdown(f"- {treatment} × {var} (one term per category)")
+                    else:
+                        st.markdown(f"- {treatment} × {var}")
 
-            if n_vars >= 3:
+            if two_way_vars and three_way_vars:
                 st.markdown("**Three-way interactions:**")
-                three_way_interactions = [f"{a} × {b} × {c}" for a, b, c in combinations(selected_vars, 3)]
-                if three_way_interactions:
-                    cols = st.columns(3)
-                    for i, interaction in enumerate(three_way_interactions):
-                        cols[i % 3].markdown(f"- {interaction}")
-            else:
-                st.markdown("**Three-way interactions:** *Need at least 3 variables*")
+                for two_way_var in two_way_vars:
+                    for three_way_var in three_way_vars:
+                        two_way_type = st.session_state.dag_variables.get(two_way_var, {}).get('type', 'unknown')
+                        three_way_type = st.session_state.dag_variables.get(three_way_var, {}).get('type', 'unknown')
+
+                        interaction_str = f"{treatment} × {two_way_var} × {three_way_var}"
+                        if two_way_type == 'categorical' or three_way_type == 'categorical':
+                            interaction_str += " (one term per category combination)"
+                        st.markdown(f"- {interaction_str}")
+            elif not two_way_vars:
+                st.markdown("**Three-way interactions:** *Select two-way variables first*")
 
         # Warning for too many interactions
         total_interactions = n_two_way + n_three_way
         if total_interactions > 100:
-            st.warning(f"⚠️ You've selected {total_interactions} interaction terms. This may take a long time to compute. Consider selecting fewer variables.")
+            st.warning(f"⚠️ You've selected {total_interactions} base interaction terms. This may take a long time to compute. Consider selecting fewer variables.")
         elif total_interactions > 50:
-            st.info(f"ℹ️ You've selected {total_interactions} interaction terms. Analysis may take several minutes.")
+            st.info(f"ℹ️ You've selected {total_interactions} base interaction terms. Analysis may take several minutes.")
 
-        # Navigation buttons
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            if st.button("⬅️ Back to Upload Data", use_container_width=True):
-                st.session_state.step = 2
-                st.rerun()
-        with col3:
-            if len(selected_vars) >= 2 and st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
+    # Determine if we can proceed
+    can_proceed = len(two_way_vars) > 0
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Upload Data", use_container_width=True):
+            st.session_state.step = 2
+            st.rerun()
+    with col3:
+        if can_proceed:
+            if st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
                 st.session_state.step = 4
                 st.rerun()
-
-    else:
-        st.warning("⚠️ Please select at least 2 variables to create interaction terms.")
-
-        # Navigation buttons (without proceed)
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            if st.button("⬅️ Back to Upload Data", use_container_width=True):
-                st.session_state.step = 2
-                st.rerun()
+        else:
+            st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True, disabled=True)
+            st.warning("⚠️ Please select at least one variable for two-way interactions to proceed.")
 
 
 def step_4_run_analysis():
@@ -771,7 +842,8 @@ def step_4_run_analysis():
                     treatment=st.session_state.treatment,
                     outcome=st.session_state.outcome,
                     column_types=st.session_state.column_types,
-                    interaction_variables=st.session_state.interaction_variables
+                    two_way_interaction_variables=st.session_state.two_way_interaction_variables,
+                    three_way_interaction_variables=st.session_state.three_way_interaction_variables
                 )
 
                 results = estimator.estimate_ate(

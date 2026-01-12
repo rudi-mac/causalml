@@ -18,7 +18,9 @@ class DMLEstimatorDoubleML:
     Estimates main effect and interaction effects
     """
 
-    def __init__(self, data, dag, treatment, outcome, column_types, interaction_variables=None):
+    def __init__(self, data, dag, treatment, outcome, column_types,
+                 two_way_interaction_variables=None, three_way_interaction_variables=None,
+                 interaction_variables=None):
         """
         Initialize DML estimator
 
@@ -28,13 +30,18 @@ class DMLEstimatorDoubleML:
             treatment (str): Treatment variable name
             outcome (str): Outcome variable name
             column_types (dict): Variable type specifications
-            interaction_variables (list): Variables to create interaction terms from
+            two_way_interaction_variables (list): Variables for two-way interactions with treatment
+            three_way_interaction_variables (list): Variables for three-way interactions
+            interaction_variables (list): DEPRECATED - Use two_way and three_way instead
         """
         self.data = data.copy()
         self.dag = dag
         self.treatment = treatment
         self.outcome = outcome
         self.column_types = column_types
+        self.two_way_interaction_variables = two_way_interaction_variables or []
+        self.three_way_interaction_variables = three_way_interaction_variables or []
+        # Legacy support
         self.interaction_variables = interaction_variables or []
         self.model = None
         self.interaction_terms = []
@@ -174,8 +181,10 @@ class DMLEstimatorDoubleML:
 
     def _construct_interaction_terms(self, data):
         """
-        Construct interaction terms from selected variables
-        Creates both 2-way and 3-way interactions
+        Construct interaction terms with treatment variable always included
+        Creates:
+        - Two-way: treatment × variable (for each two_way_interaction_variable)
+        - Three-way: treatment × two_way_var × three_way_var (for all combinations)
 
         Args:
             data (pd.DataFrame): Preprocessed data
@@ -183,49 +192,51 @@ class DMLEstimatorDoubleML:
         Returns:
             pd.DataFrame: Data with interaction terms added
         """
-        if not self.interaction_variables:
+        # Legacy support: if old interaction_variables is used, convert to two-way
+        if self.interaction_variables and not self.two_way_interaction_variables:
+            self.two_way_interaction_variables = self.interaction_variables
+
+        if not self.two_way_interaction_variables:
+            print("No interaction variables specified")
             return data
 
         result_data = data.copy()
         self.interaction_terms = []
 
+        # Ensure treatment exists in data
+        if self.treatment not in data.columns:
+            print(f"Warning: Treatment variable {self.treatment} not found in data")
+            return data
+
         # Filter interaction variables to only those that exist in data
-        valid_interaction_vars = [v for v in self.interaction_variables if v in data.columns]
+        valid_two_way = [v for v in self.two_way_interaction_variables if v in data.columns]
+        valid_three_way = [v for v in self.three_way_interaction_variables if v in data.columns]
 
-        # Create 2-way interactions
-        for var1, var2 in combinations(valid_interaction_vars, 2):
-            # Avoid creating interactions with same prefix (e.g., Father_X * Father_Y)
-            var1_prefix = var1.split('_')[0]
-            var2_prefix = var2.split('_')[0]
+        # Create 2-way interactions: treatment × variable
+        for var in valid_two_way:
+            interaction_name = f"{self.treatment}:{var}"
+            result_data[interaction_name] = data[self.treatment] * data[var]
+            self.interaction_terms.append({
+                'name': interaction_name,
+                'variables': [self.treatment, var],
+                'order': 2
+            })
 
-            if var1_prefix != var2_prefix or var1_prefix in ['Treatment', 'Outcome']:
-                interaction_name = f"{var1}:{var2}"
-                result_data[interaction_name] = data[var1] * data[var2]
-                self.interaction_terms.append({
-                    'name': interaction_name,
-                    'variables': [var1, var2],
-                    'order': 2
-                })
-
-        # Create 3-way interactions
-        if len(valid_interaction_vars) >= 3:
-            for var1, var2, var3 in combinations(valid_interaction_vars, 3):
-                # Avoid creating interactions with same prefix
-                var1_prefix = var1.split('_')[0]
-                var2_prefix = var2.split('_')[0]
-                var3_prefix = var3.split('_')[0]
-
-                if (var1_prefix != var2_prefix and var1_prefix != var3_prefix and var2_prefix != var3_prefix) \
-                        or any(p in ['Treatment', 'Outcome'] for p in [var1_prefix, var2_prefix, var3_prefix]):
-                    interaction_name = f"{var1}:{var2}:{var3}"
-                    result_data[interaction_name] = data[var1] * data[var2] * data[var3]
+        # Create 3-way interactions: treatment × two_way_var × three_way_var
+        if valid_two_way and valid_three_way:
+            for two_way_var in valid_two_way:
+                for three_way_var in valid_three_way:
+                    interaction_name = f"{self.treatment}:{two_way_var}:{three_way_var}"
+                    result_data[interaction_name] = data[self.treatment] * data[two_way_var] * data[three_way_var]
                     self.interaction_terms.append({
                         'name': interaction_name,
-                        'variables': [var1, var2, var3],
+                        'variables': [self.treatment, two_way_var, three_way_var],
                         'order': 3
                     })
 
-        print(f"Created {len(self.interaction_terms)} interaction terms ({sum(1 for t in self.interaction_terms if t['order']==2)} two-way, {sum(1 for t in self.interaction_terms if t['order']==3)} three-way)")
+        n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
+        n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)
+        print(f"Created {len(self.interaction_terms)} interaction terms ({n_two_way} two-way, {n_three_way} three-way)")
 
         return result_data
 
