@@ -407,11 +407,10 @@ def step_1_paste_dag():
             st.success(f"✅ Parsed DAG with {dag.number_of_nodes()} nodes and {dag.number_of_edges()} edges")
 
             # Visualize DAG
-            st.markdown("#### DAG Visualization")
+            st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
             from components.dag_editor import DAGEditor
             dag_editor = DAGEditor(nodes)
-            fig = dag_editor._visualize_dag(dag)
-            st.pyplot(fig)
+            dag_editor._visualize_dag(dag)
 
             st.markdown("---")
 
@@ -473,7 +472,11 @@ def step_1_paste_dag():
                 st.session_state.outcome = outcome
                 st.session_state.dag_variables = variables_config
                 st.session_state.column_types = {var: config['type'] for var, config in variables_config.items()}
+                st.session_state.dag_confirmed = True
+                st.rerun()
 
+            # Show summary and navigation after confirmation
+            if st.session_state.get('dag_confirmed', False) and st.session_state.dag is not None:
                 st.success(f"✅ DAG configured successfully!")
                 st.success(f"✅ Treatment: **{treatment}** → Outcome: **{outcome}**")
 

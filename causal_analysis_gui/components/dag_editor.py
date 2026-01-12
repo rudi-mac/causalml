@@ -8,6 +8,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
+import streamlit.components.v1 as components
+import tempfile
+import os
 
 
 class DAGEditor:
@@ -122,9 +125,8 @@ class DAGEditor:
             self.dag.add_edges_from(st.session_state.dag_edges)
 
             # Visualize
-            st.markdown("#### DAG Visualization")
-            fig = self._visualize_dag(self.dag)
-            st.pyplot(fig)
+            st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
+            self._visualize_dag(self.dag)
 
             # Clear all button
             if st.button("🗑️ Clear All Edges", type="secondary"):
@@ -203,9 +205,8 @@ class DAGEditor:
                     st.success(f"✅ Parsed {len(edges)} edges successfully!")
 
                     # Visualize
-                    st.markdown("#### DAG Visualization")
-                    fig = self._visualize_dag(self.dag)
-                    st.pyplot(fig)
+                    st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
+                    self._visualize_dag(self.dag)
 
                     return self.dag
                 else:
@@ -265,8 +266,8 @@ class DAGEditor:
                 st.success(f"✅ Loaded graph with {self.dag.number_of_edges()} edges")
 
                 # Visualize
-                fig = self._visualize_dag(self.dag)
-                st.pyplot(fig)
+                st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
+                self._visualize_dag(self.dag)
 
                 return self.dag
 
@@ -276,9 +277,120 @@ class DAGEditor:
 
         return None
 
-    def _visualize_dag(self, dag):
+    def _visualize_dag(self, dag, treatment=None, outcome=None):
         """
-        Visualize the DAG using matplotlib
+        Visualize the DAG using pyvis for interactive drag-and-drop
+
+        Args:
+            dag (nx.DiGraph): The DAG to visualize
+            treatment (str, optional): Treatment variable name for highlighting
+            outcome (str, optional): Outcome variable name for highlighting
+
+        Returns:
+            None (displays interactive graph directly)
+        """
+        try:
+            from pyvis.network import Network
+        except ImportError:
+            st.error("pyvis library not found. Please install it with: pip install pyvis")
+            return self._visualize_dag_matplotlib(dag)
+
+        # Create pyvis network
+        net = Network(
+            height='600px',
+            width='100%',
+            bgcolor='#ffffff',
+            font_color='#000000',
+            directed=True
+        )
+
+        # Configure physics for better layout
+        net.set_options("""
+        {
+          "physics": {
+            "enabled": true,
+            "solver": "forceAtlas2Based",
+            "forceAtlas2Based": {
+              "gravitationalConstant": -50,
+              "centralGravity": 0.01,
+              "springLength": 200,
+              "springConstant": 0.08,
+              "damping": 0.4,
+              "avoidOverlap": 1
+            },
+            "stabilization": {
+              "enabled": true,
+              "iterations": 100
+            }
+          },
+          "nodes": {
+            "font": {
+              "size": 16,
+              "face": "arial"
+            }
+          },
+          "edges": {
+            "arrows": {
+              "to": {
+                "enabled": true,
+                "scaleFactor": 0.5
+              }
+            },
+            "color": {
+              "color": "#848484",
+              "highlight": "#848484"
+            },
+            "smooth": {
+              "enabled": true,
+              "type": "curvedCW",
+              "roundness": 0.2
+            }
+          },
+          "interaction": {
+            "dragNodes": true,
+            "dragView": true,
+            "zoomView": true
+          }
+        }
+        """)
+
+        # Add nodes with colors based on role
+        for node in dag.nodes():
+            if node == treatment:
+                color = '#90EE90'  # Light green for treatment
+                title = f"{node} (Treatment)"
+                size = 35
+            elif node == outcome:
+                color = '#FFB6C1'  # Light pink for outcome
+                title = f"{node} (Outcome)"
+                size = 35
+            else:
+                color = '#ADD8E6'  # Light blue for covariates
+                title = f"{node} (Covariate)"
+                size = 30
+
+            net.add_node(
+                node,
+                label=node,
+                title=title,
+                color=color,
+                size=size,
+                font={'size': 16}
+            )
+
+        # Add edges
+        for edge in dag.edges():
+            net.add_edge(edge[0], edge[1])
+
+        # Generate HTML
+        html = net.generate_html()
+
+        # Display in Streamlit
+        components.html(html, height=650, scrolling=False)
+
+    def _visualize_dag_matplotlib(self, dag):
+        """
+        Fallback: Visualize the DAG using matplotlib
 
         Args:
             dag (nx.DiGraph): The DAG to visualize
@@ -483,7 +595,7 @@ class DAGEditor:
                 # Build and visualize DAG
                 if st.session_state.dag_builder_vars:
                     st.markdown("---")
-                    st.markdown("### Step 4: DAG Visualization")
+                    st.markdown("### Step 4: DAG Visualization (Interactive - Drag nodes to reposition)")
 
                     # Build DAG
                     self.dag = nx.DiGraph()
@@ -491,12 +603,11 @@ class DAGEditor:
                     self.dag.add_edges_from(st.session_state.dag_builder_edges)
 
                     # Visualize with interactive layout
-                    fig = self._visualize_dag_interactive(
+                    self._visualize_dag_interactive(
                         self.dag,
                         treatment=st.session_state.dag_builder_treatment,
                         outcome=st.session_state.dag_builder_outcome
                     )
-                    st.pyplot(fig)
 
                     # Data type guide
                     with st.expander("ℹ️ Data Type Guide"):
@@ -525,6 +636,7 @@ class DAGEditor:
     def _visualize_dag_interactive(self, dag, treatment=None, outcome=None):
         """
         Visualize the DAG with special highlighting for treatment and outcome
+        Now uses pyvis for interactive drag-and-drop functionality
 
         Args:
             dag (nx.DiGraph): The DAG to visualize
@@ -532,74 +644,10 @@ class DAGEditor:
             outcome (str): Outcome variable name
 
         Returns:
-            matplotlib.figure.Figure: The figure object
+            None (displays interactive graph directly)
         """
-        fig, ax = plt.subplots(figsize=(14, 10))
-
-        # Use hierarchical layout
-        try:
-            # Try to use a hierarchical layout if treatment->outcome path exists
-            if treatment and outcome and dag.has_node(treatment) and dag.has_node(outcome):
-                pos = nx.spring_layout(dag, k=3, iterations=100, seed=42)
-            else:
-                pos = nx.spring_layout(dag, k=2, iterations=50, seed=42)
-        except:
-            pos = nx.circular_layout(dag)
-
-        # Prepare node colors
-        node_colors = []
-        for node in dag.nodes():
-            if node == treatment:
-                node_colors.append('lightgreen')
-            elif node == outcome:
-                node_colors.append('lightcoral')
-            else:
-                node_colors.append('lightblue')
-
-        # Draw nodes
-        nx.draw_networkx_nodes(
-            dag, pos,
-            node_color=node_colors,
-            node_size=3000,
-            alpha=0.9,
-            ax=ax
-        )
-
-        # Draw edges
-        nx.draw_networkx_edges(
-            dag, pos,
-            edge_color='gray',
-            arrows=True,
-            arrowsize=25,
-            arrowstyle='->',
-            width=2.5,
-            ax=ax,
-            connectionstyle='arc3,rad=0.1'
-        )
-
-        # Draw labels
-        nx.draw_networkx_labels(
-            dag, pos,
-            font_size=11,
-            font_weight='bold',
-            ax=ax
-        )
-
-        # Legend
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='lightgreen', label='Treatment'),
-            Patch(facecolor='lightcoral', label='Outcome'),
-            Patch(facecolor='lightblue', label='Covariate')
-        ]
-        ax.legend(handles=legend_elements, loc='upper left')
-
-        ax.set_title("Causal DAG (Drag nodes in your mind - layout is auto-generated)",
-                    fontsize=16, fontweight='bold')
-        ax.axis('off')
-        plt.tight_layout()
-
-        return fig
+        # Use the updated _visualize_dag method which now supports pyvis
+        self._visualize_dag(dag, treatment=treatment, outcome=outcome)
 
     def export_dag(self, dag, format='edgelist'):
         """
