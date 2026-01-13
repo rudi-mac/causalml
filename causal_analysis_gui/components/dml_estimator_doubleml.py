@@ -21,7 +21,7 @@ class DMLEstimatorDoubleML:
 
     def __init__(self, data, dag, treatment, outcome, column_types,
                  two_way_interaction_variables=None, three_way_interaction_variables=None,
-                 interaction_variables=None):
+                 interaction_variables=None, categorical_drop_values=None, mediators=None):
         """
         Initialize DML estimator
 
@@ -34,6 +34,8 @@ class DMLEstimatorDoubleML:
             two_way_interaction_variables (list): Variables for two-way interactions with treatment
             three_way_interaction_variables (list): Variables for three-way interactions
             interaction_variables (list): DEPRECATED - Use two_way and three_way instead
+            categorical_drop_values (dict): Dict mapping categorical variable names to values to drop (reference categories)
+            mediators (set): Set of mediator variable names (on causal path, excluded from interactions)
         """
         self.data = data.copy()
         self.dag = dag
@@ -44,6 +46,8 @@ class DMLEstimatorDoubleML:
         self.three_way_interaction_variables = three_way_interaction_variables or []
         # Legacy support
         self.interaction_variables = interaction_variables or []
+        self.categorical_drop_values = categorical_drop_values or {}
+        self.mediators = mediators or set()
         self.model = None
         self.interaction_terms = []
         self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
@@ -70,7 +74,7 @@ class DMLEstimatorDoubleML:
         # Build treatment_variables list following the same logic as estimate_ate
         treatment_variables = []
 
-        # Step 1: Add main treatment variable(s)
+        # Step 1: Add ONLY the main treatment variable (the one selected in Step 1)
         if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
             for dummy_col in self.categorical_mapping[self.treatment]:
                 if dummy_col in processed_data.columns:
@@ -78,16 +82,7 @@ class DMLEstimatorDoubleML:
         elif self.treatment in processed_data.columns:
             treatment_variables.append(self.treatment)
 
-        # Step 2: Add user-selected two-way interaction variables as separate main treatments
-        for var in self.two_way_interaction_variables:
-            if var in processed_data.columns:
-                treatment_variables.append(var)
-            elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
-                for dummy_col in self.categorical_mapping[var]:
-                    if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
-                        treatment_variables.append(dummy_col)
-
-        # Step 3 & 4: Add interaction terms
+        # Step 2: Add interaction terms
         for term in self.interaction_terms:
             if term['name'] in processed_data.columns:
                 treatment_variables.append(term['name'])
@@ -134,14 +129,13 @@ class DMLEstimatorDoubleML:
                 progress_callback(0.2, 1.0, "Constructing interaction terms...")
             processed_data = self._construct_interaction_terms(processed_data)
 
-            # Create list of all treatments following Sample_Analysis.ipynb logic:
-            # 1. Add main treatment variable(s)
-            # 2. Add user-selected two-way variables as separate main treatments
-            # 3. Add 2-way interaction terms
-            # 4. Add 3-way interaction terms
+            # Create list of treatment variables to estimate:
+            # IMPORTANT: Main treatment is ONLY the treatment variable from Step 1
+            # All 2-way and 3-way interactions must include this treatment variable
+            # (User requirement: "the main treatment effect can only be one variable")
             treatment_variables = []
 
-            # Step 1: Add main treatment variable(s)
+            # Step 1: Add ONLY the main treatment variable (the one selected in Step 1)
             # If treatment was categorical, it's now multiple dummy columns
             if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
                 # Treatment was categorical - add all dummy columns
@@ -153,19 +147,8 @@ class DMLEstimatorDoubleML:
                 # Treatment is binary or continuous
                 treatment_variables.append(self.treatment)
 
-            # Step 2: Add user-selected two-way interaction variables as separate main treatments
-            # Following Sample_Analysis.ipynb: both 'Degree' and 'Gender_Female' are added as main treatments
-            for var in self.two_way_interaction_variables:
-                if var in processed_data.columns:
-                    treatment_variables.append(var)
-                # Also handle dummified variables
-                elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
-                    for dummy_col in self.categorical_mapping[var]:
-                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
-                            treatment_variables.append(dummy_col)
-
-            # Step 3 & 4: Add interaction terms as additional treatments
-            # These include all 2-way and 3-way interactions with treatment
+            # Step 2: Add interaction terms as additional treatments
+            # These include all 2-way and 3-way interactions (which already include treatment by construction)
             for term in self.interaction_terms:
                 if term['name'] in processed_data.columns:
                     treatment_variables.append(term['name'])
@@ -349,12 +332,13 @@ class DMLEstimatorDoubleML:
     def _construct_interaction_terms(self, data):
         """
         Construct ALL combinatorially possible interaction terms following Sample_Analysis.ipynb logic
-        Steps:
-        1. Generate ALL 2-way combinations of variables (excluding outcome)
-        2. Filter out interactions within same category (e.g., no Father_X:Father_Y)
-        3. Generate ALL 3-way combinations of variables (excluding outcome)
-        4. Filter out interactions within same category
-        5. Construct treatment variables based on user input from Step 3
+        Steps (from Sample_Analysis.ipynb cells 35-37):
+        1. Create unique_values list: all columns EXCEPT outcome (includes treatment)
+        2. Generate ALL 2-way combinations from unique_values: list(combinations(unique_values, 2))
+        3. Filter out interactions within same category (e.g., no Father_X:Father_Y)
+        4. Generate ALL 3-way combinations from unique_values: list(combinations(unique_values, 3))
+        5. Filter out interactions within same category
+        6. Select only interactions that include the main treatment variable
 
         Args:
             data (pd.DataFrame): Preprocessed data
@@ -368,68 +352,163 @@ class DMLEstimatorDoubleML:
 
         self.interaction_terms = []
 
-        # Get all variable names (excluding outcome)
-        all_vars = [col for col in data.columns if col != self.outcome]
-        print(f"\nTotal variables (excluding outcome): {len(all_vars)}")
+        # Following Sample_Analysis.ipynb cell 35: unique_values = causal_df.drop('Hourly_Salary_log',axis=1).columns
+        # This gets ALL columns except outcome (includes treatment)
+        # CRITICAL: Also exclude mediators - they are on the causal path and should NOT be in interactions
+
+        # Get dummified mediator column names
+        mediator_columns = set()
+        for mediator in self.mediators:
+            if mediator in self.categorical_mapping:
+                # Mediator was categorical, add all its dummy columns
+                mediator_columns.update(self.categorical_mapping[mediator])
+            else:
+                # Mediator is not categorical
+                mediator_columns.add(mediator)
+
+        unique_values = [col for col in data.columns
+                        if col != self.outcome and col not in mediator_columns]
+
+        print(f"\nStep 1: Created unique_values list (all columns except outcome and mediators): {len(unique_values)} variables")
+        if self.mediators:
+            print(f"Excluded mediators (on causal path): {self.mediators}")
+            print(f"Excluded mediator columns after dummification: {mediator_columns}")
+        print(f"unique_values sample (first 10): {unique_values[:10]}")
+
+        # Show prefix distribution to help understand the filtering
+        prefix_counts = {}
+        for col in unique_values:
+            prefix = col[:6]
+            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+
+        prefixes_with_multiple = {k: v for k, v in prefix_counts.items() if v > 1}
+        print(f"\nPrefix analysis (prefixes with multiple columns):")
+        print(f"Total unique prefixes: {len(prefix_counts)}")
+        print(f"Prefixes with 2+ columns (will have blocked interactions): {len(prefixes_with_multiple)}")
+        if prefixes_with_multiple:
+            for prefix, count in sorted(prefixes_with_multiple.items(), key=lambda x: x[1], reverse=True)[:10]:
+                print(f"  '{prefix}': {count} columns")
+        else:
+            print("  WARNING: No prefixes with multiple columns found!")
+            print("  This means NO interactions will be blocked (all variables treated as different categories)")
 
         # ========================================
-        # STEP 1: Generate ALL 2-way combinations
+        # STEP 2: Generate ALL 2-way combinations (Sample_Analysis.ipynb cell 35)
         # ========================================
-        print("\n[STEP 1] Generating all 2-way combinations...")
-        all_combinations_2w = list(combinations(all_vars, 2))
+        print("\n[STEP 2] Generating all 2-way combinations from unique_values...")
+        all_combinations_2w = list(combinations(unique_values, 2))
         print(f"Total 2-way combinations: {len(all_combinations_2w)}")
 
         # Build all 2-way interaction columns at once to avoid DataFrame fragmentation
+        # CRITICAL FILTERING LOGIC (from Sample_Analysis.ipynb cell 35):
+        # Only create interactions between variables from DIFFERENT categorical groups.
+        # E.g., Ethnic_Asian:Ethnic_Black should NOT be created (both start with "Ethnic")
+        # But Ethnic_Asian:Region_South SHOULD be created (different prefixes)
         interaction_terms_2way = []
         two_way_dict = {}
-        for combi in all_combinations_2w:
-            # Extract category prefix (first 6 characters)
-            prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
-            prefix2 = combi[1][:6] if len(combi[1]) >= 6 else combi[1]
+        blocked_2way = 0
+        blocked_2way_examples = []
 
-            # Only keep if different categories
+        for combi in all_combinations_2w:
+            # Extract category prefix (first 6 characters) to identify which categorical variable
+            # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
+            prefix1 = combi[0][:6]
+            prefix2 = combi[1][:6]
+
+            # Following Sample_Analysis.ipynb logic: combi[0][:6] != combi[1][:6]
+            # Only keep interactions where the two columns come from DIFFERENT categorical variables
             if prefix1 != prefix2:
                 column_name = f"{combi[0]}:{combi[1]}"
                 two_way_dict[column_name] = data[combi[0]] * data[combi[1]]
                 interaction_terms_2way.append(column_name)
+            else:
+                # Track blocked interactions for diagnostics
+                blocked_2way += 1
+                if len(blocked_2way_examples) < 10:
+                    blocked_2way_examples.append(f"{combi[0]}:{combi[1]} (both start with '{prefix1}')")
 
         print(f"2-way interactions created (after filtering): {len(interaction_terms_2way)}")
+        print(f"2-way interactions BLOCKED (same category): {blocked_2way}")
+        if blocked_2way_examples:
+            print(f"Examples of blocked 2-way interactions:")
+            for ex in blocked_2way_examples:
+                print(f"  ❌ {ex}")
 
         # ========================================
-        # STEP 2: Generate ALL 3-way combinations
+        # STEP 3: Generate ALL 3-way combinations (Sample_Analysis.ipynb cell 37)
         # ========================================
-        print("\n[STEP 2] Generating all 3-way combinations...")
-        all_combinations_3w = list(combinations(all_vars, 3))
+        print("\n[STEP 3] Generating all 3-way combinations from unique_values...")
+        all_combinations_3w = list(combinations(unique_values, 3))
         print(f"Total 3-way combinations: {len(all_combinations_3w)}")
 
         # Build all 3-way interaction columns at once to avoid DataFrame fragmentation
+        # CRITICAL FILTERING LOGIC (from Sample_Analysis.ipynb cell 37):
+        # Only create interactions between variables from THREE DIFFERENT categorical groups.
+        # E.g., Ethnic_Asian:Father_College:Mother_12_grades SHOULD be created (all different prefixes)
+        # But Ethnic_Asian:Ethnic_Black:Region_South should NOT (two "Ethnic" columns)
         interaction_terms_3way = []
         three_way_dict = {}
-        for combi in all_combinations_3w:
-            # Extract category prefixes
-            prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
-            prefix2 = combi[1][:6] if len(combi[1]) >= 6 else combi[1]
-            prefix3 = combi[2][:6] if len(combi[2]) >= 6 else combi[2]
+        blocked_3way = 0
+        blocked_3way_examples = []
 
-            # Only keep if all different categories
+        for combi in all_combinations_3w:
+            # Extract category prefixes (first 6 characters) to identify which categorical variable
+            # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
+            prefix1 = combi[0][:6]
+            prefix2 = combi[1][:6]
+            prefix3 = combi[2][:6]
+
+            # Following Sample_Analysis.ipynb logic:
+            # (combi[0][:6] != combi[1][:6]) & (combi[0][:6] != combi[2][:6]) & (combi[1][:6] != combi[2][:6])
+            # Only keep interactions where ALL THREE columns come from DIFFERENT categorical variables
             if (prefix1 != prefix2) and (prefix1 != prefix3) and (prefix2 != prefix3):
                 column_name = f"{combi[0]}:{combi[1]}:{combi[2]}"
                 three_way_dict[column_name] = data[combi[0]] * data[combi[1]] * data[combi[2]]
                 interaction_terms_3way.append(column_name)
+            else:
+                # Track blocked interactions for diagnostics
+                blocked_3way += 1
+                if len(blocked_3way_examples) < 10:
+                    blocked_3way_examples.append(f"{combi[0]}:{combi[1]}:{combi[2]} (prefixes: {prefix1}, {prefix2}, {prefix3})")
 
         print(f"3-way interactions created (after filtering): {len(interaction_terms_3way)}")
+        print(f"3-way interactions BLOCKED (at least 2 from same category): {blocked_3way}")
+        if blocked_3way_examples:
+            print(f"Examples of blocked 3-way interactions:")
+            for ex in blocked_3way_examples:
+                print(f"  ❌ {ex}")
 
         # Concatenate all interaction columns at once to avoid fragmentation warning
         print("\n[COMBINING] Concatenating all interaction columns to avoid DataFrame fragmentation...")
         two_way_df = pd.DataFrame(two_way_dict)
         three_way_df = pd.DataFrame(three_way_dict)
         result_data = pd.concat([data, two_way_df, three_way_df], axis=1).copy()
-        print(f"Combined data shape: {result_data.shape}")
+
+        print("\n" + "="*80)
+        print("DATAFRAME COMPOSITION SUMMARY")
+        print("="*80)
+        print(f"Original variables:              {data.shape[1]:>8,} columns")
+        print(f"2-way interactions (filtered):   {len(two_way_df.columns):>8,} columns")
+        print(f"3-way interactions (filtered):   {len(three_way_df.columns):>8,} columns")
+        print(f"{'-'*80}")
+        print(f"TOTAL COLUMNS IN DATAFRAME:      {result_data.shape[1]:>8,} columns")
+        print(f"TOTAL ROWS:                      {result_data.shape[0]:>8,} rows")
+        print("="*80)
 
         # ========================================
-        # STEP 3: Construct treatment variables based on user input
+        # STEP 4: Construct treatment interaction terms based on user input
+        # Following Sample_Analysis.ipynb cell 12: All interactions MUST include main treatment variable
         # ========================================
-        print("\n[STEP 3] Constructing treatment variables based on user selection...")
+        print("\n[STEP 4] Constructing treatment interaction terms based on user selection...")
+
+        # Get list of treatment variable(s) - handle dummified treatment
+        treatment_vars = []
+        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
+            treatment_vars = [d for d in self.categorical_mapping[self.treatment] if d in data.columns]
+        elif self.treatment in data.columns:
+            treatment_vars = [self.treatment]
+
+        print(f"Main treatment variable(s): {treatment_vars}")
 
         # Legacy support
         if self.interaction_variables and not self.two_way_interaction_variables:
@@ -462,51 +541,62 @@ class DMLEstimatorDoubleML:
         print(f"User-selected two-way variables (after dummification): {valid_two_way}")
         print(f"User-selected three-way variables (after dummification): {valid_three_way}")
 
-        # Following Sample_Analysis.ipynb: Match all interactions containing treatment AND the selected variables
-        # Use regex pattern matching like in the notebook
-
-        # Get list of treatment variable(s) - handle dummified treatment
-        treatment_vars = []
-        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
-            treatment_vars = [d for d in self.categorical_mapping[self.treatment] if d in data.columns]
-        elif self.treatment in data.columns:
-            treatment_vars = [self.treatment]
-
-        print(f"Treatment variable(s): {treatment_vars}")
+        # CRITICAL: All 2-way and 3-way interactions MUST include the main treatment variable
+        # Following Sample_Analysis.ipynb logic
 
         # Find ALL 2-way interactions that contain treatment AND a two_way variable
         for interaction in interaction_terms_2way:
             parts = interaction.split(':')
-            # Check if interaction contains any treatment variable AND any two_way variable
+            # Check if interaction contains any treatment variable
             has_treatment = any(tv in parts for tv in treatment_vars)
-            has_two_way = any(v in parts for v in valid_two_way)
 
-            if has_treatment and has_two_way:
-                # Check that the column is not constant (has variation)
-                if result_data[interaction].nunique() > 1:
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': parts,
-                        'order': 2
-                    })
+            # Only keep interactions that include treatment
+            if has_treatment:
+                # Also check if the other variable is in the user-selected two_way list
+                other_vars = [p for p in parts if p not in treatment_vars]
+                has_two_way_var = any(v in valid_two_way for v in other_vars)
 
-        # Find ALL 3-way interactions that contain treatment AND a two_way variable AND a third variable
+                if has_two_way_var:
+                    # Check that the column is not constant (has variation)
+                    if result_data[interaction].nunique() > 1:
+                        self.interaction_terms.append({
+                            'name': interaction,
+                            'variables': parts,
+                            'order': 2
+                        })
+
+        # Find ALL 3-way interactions that contain treatment AND two other selected variables
+        # CRITICAL REQUIREMENT: 3-way interactions MUST include:
+        # 1. The main treatment variable
+        # 2. At least one variable from the two_way_interaction_variables list
+        # 3. The third variable can be from either two_way or three_way list
         for interaction in interaction_terms_3way:
             parts = interaction.split(':')
-            # Check if interaction contains treatment AND any two_way variable AND another variable
+            # Check if interaction contains treatment
             has_treatment = any(tv in parts for tv in treatment_vars)
-            has_two_way = any(v in parts for v in valid_two_way)
-            # For three-way, also check if it has a third variable (from three_way list or two_way list)
-            has_third = any(v in parts for v in valid_three_way) or len([v for v in valid_two_way if v in parts]) >= 2
 
-            if has_treatment and has_two_way and has_third:
-                # Check that the column is not constant (has variation)
-                if result_data[interaction].nunique() > 1:
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': parts,
-                        'order': 3
-                    })
+            # Only keep interactions that include treatment
+            if has_treatment:
+                # Get the other two variables (not treatment)
+                other_vars = [p for p in parts if p not in treatment_vars]
+
+                # CRITICAL: Must have at least one variable from the two_way list
+                has_two_way_var = any(v in valid_two_way for v in other_vars)
+
+                if has_two_way_var:
+                    # Check if both other variables are in the selected lists (two_way or three_way)
+                    all_selected_vars = list(set(valid_two_way + valid_three_way))
+                    matching_vars = [v for v in other_vars if v in all_selected_vars]
+
+                    # We need exactly 2 matching variables (besides treatment) to form a valid 3-way interaction
+                    if len(matching_vars) >= 2:
+                        # Check that the column is not constant (has variation)
+                        if result_data[interaction].nunique() > 1:
+                            self.interaction_terms.append({
+                                'name': interaction,
+                                'variables': parts,
+                                'order': 3
+                            })
 
         n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
         n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)
@@ -525,7 +615,7 @@ class DMLEstimatorDoubleML:
         Preprocess data based on variable types
         Following Sample_Analysis.ipynb logic:
         - Dummify categorical variables using pd.get_dummies
-        - Drop one category per group to avoid dummy trap
+        - Drop user-selected category per group to avoid dummy trap
         - Keep binary and continuous variables as-is
 
         Returns:
@@ -558,10 +648,25 @@ class DMLEstimatorDoubleML:
                 # Add dummies to processed data
                 processed = pd.concat([processed, dummies], axis=1)
 
-                # Drop one category to avoid dummy trap (drop first category)
-                first_dummy = dummies.columns[0]
-                columns_to_drop.append(first_dummy)
-                print(f"  Created {len(dummies.columns)} dummy columns, will drop {first_dummy} to avoid dummy trap")
+                # Drop user-selected category to avoid dummy trap
+                # If user hasn't specified, default to first category
+                if col in self.categorical_drop_values:
+                    # User specified which value to drop
+                    drop_value = self.categorical_drop_values[col]
+                    drop_column = f"{col}_{drop_value}"
+                    if drop_column in dummies.columns:
+                        columns_to_drop.append(drop_column)
+                        print(f"  Created {len(dummies.columns)} dummy columns, will drop user-selected '{drop_column}' to avoid dummy trap")
+                    else:
+                        # Fallback if the column name doesn't match (shouldn't happen)
+                        first_dummy = dummies.columns[0]
+                        columns_to_drop.append(first_dummy)
+                        print(f"  WARNING: Could not find '{drop_column}', dropping first category '{first_dummy}' instead")
+                else:
+                    # Default behavior: drop first category
+                    first_dummy = dummies.columns[0]
+                    columns_to_drop.append(first_dummy)
+                    print(f"  Created {len(dummies.columns)} dummy columns, will drop first category '{first_dummy}' to avoid dummy trap")
 
                 # Remove original categorical column
                 processed = processed.drop(col, axis=1)

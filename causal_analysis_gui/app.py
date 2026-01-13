@@ -45,6 +45,12 @@ if 'three_way_interaction_variables' not in st.session_state:
     st.session_state.three_way_interaction_variables = []
 if 'results' not in st.session_state:
     st.session_state.results = None
+if 'categorical_drop_values' not in st.session_state:
+    st.session_state.categorical_drop_values = {}  # Dict of categorical_var: value_to_drop
+if 'categorical_drop_confirmed' not in st.session_state:
+    st.session_state.categorical_drop_confirmed = False
+if 'mediators' not in st.session_state:
+    st.session_state.mediators = set()  # Set of mediator variables (on causal path, excluded from interactions)
 
 def main():
     """Main application flow"""
@@ -702,6 +708,9 @@ def step_3_specify_interactions():
         if has_incoming and has_outgoing_to_outcome:
             mediators.add(node)
 
+    # Store mediators in session state for use in DML estimator
+    st.session_state.mediators = mediators
+
     # Remove mediators from available variables
     all_variables = [v for v in all_variables if v not in mediators]
 
@@ -862,6 +871,92 @@ def step_4_run_analysis():
         st.warning("⚠️ Please upload data (Step 2)")
         return
 
+    # Identify categorical variables (including ordinal)
+    categorical_vars = {var: dtype for var, dtype in st.session_state.column_types.items()
+                       if dtype in ['categorical', 'ordinal'] and var in st.session_state.data.columns}
+
+    # Step 4a: Ask user which value to drop for each categorical variable
+    if categorical_vars and not st.session_state.categorical_drop_confirmed:
+        st.markdown("### 📋 Step 4a: Select Reference Categories")
+        st.markdown("""
+        Before constructing interaction terms, you need to specify which category value to drop
+        (reference category) for each categorical variable to avoid the **dummy variable trap**.
+
+        The reference category will be the baseline against which other categories are compared.
+        """)
+
+        st.info("""
+        **Important:** Dropping one category per categorical variable is necessary to:
+        - Avoid perfect multicollinearity (dummy variable trap)
+        - Properly identify interaction effects between different categorical variables
+        - Ensure the model is mathematically identifiable
+        """)
+
+        with st.form("categorical_drop_form"):
+            st.markdown("#### Select which category value to drop for each categorical variable:")
+
+            # Create selection for each categorical variable
+            drop_selections = {}
+            for var_name, var_type in categorical_vars.items():
+                st.markdown(f"**{var_name}** ({var_type})")
+
+                # Get unique values from the data
+                unique_values = sorted(st.session_state.data[var_name].dropna().unique())
+
+                # Use existing selection if available, otherwise default to first value
+                default_idx = 0
+                if var_name in st.session_state.categorical_drop_values:
+                    try:
+                        default_idx = unique_values.index(st.session_state.categorical_drop_values[var_name])
+                    except ValueError:
+                        default_idx = 0
+
+                selected_value = st.selectbox(
+                    f"Drop this value from {var_name}:",
+                    options=unique_values,
+                    index=default_idx,
+                    key=f"drop_{var_name}",
+                    help=f"Select the reference category for {var_name}. This category will be omitted from the model."
+                )
+
+                drop_selections[var_name] = selected_value
+
+                # Show info about how many categories will remain
+                st.caption(f"  → Will create {len(unique_values) - 1} dummy variables (dropping '{selected_value}')")
+
+            st.markdown("---")
+            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", use_container_width=True)
+
+            if submitted:
+                # Store selections in session state
+                st.session_state.categorical_drop_values = drop_selections
+                st.session_state.categorical_drop_confirmed = True
+                st.success("✅ Reference categories confirmed! Proceeding with interaction construction...")
+                st.rerun()
+
+        # Show back button
+        if st.button("⬅️ Back to Interactions", use_container_width=True):
+            st.session_state.step = 3
+            st.rerun()
+
+        return  # Don't show the rest of Step 4 until user confirms
+
+    # If no categorical variables, automatically confirm
+    if not categorical_vars:
+        st.session_state.categorical_drop_confirmed = True
+
+    # Show a summary of the selected drop values if they exist
+    if categorical_vars and st.session_state.categorical_drop_values:
+        with st.expander("📋 Selected Reference Categories", expanded=False):
+            st.markdown("The following category values will be dropped (used as reference):")
+            for var, val in st.session_state.categorical_drop_values.items():
+                st.markdown(f"- **{var}**: dropping `{val}`")
+
+            # Add button to change selections
+            if st.button("🔄 Change Reference Categories"):
+                st.session_state.categorical_drop_confirmed = False
+                st.rerun()
+
     st.markdown("""
     Ready to estimate the causal effect! The analysis will:
     1. Identify confounders from the DAG
@@ -893,11 +988,6 @@ def step_4_run_analysis():
 
     # Preview treatment variables that will be estimated
     st.markdown("---")
-    st.markdown("### 📋 Treatment Variables to be Estimated")
-    st.markdown("""
-    The following treatment effects will be estimated by the DML model.
-    This list **exactly matches** what will be passed to the DoubleML object via the `d_cols` parameter.
-    """)
 
     try:
         # Create estimator preview (without running the full analysis)
@@ -908,8 +998,43 @@ def step_4_run_analysis():
             outcome=st.session_state.outcome,
             column_types=st.session_state.column_types,
             two_way_interaction_variables=st.session_state.two_way_interaction_variables,
-            three_way_interaction_variables=st.session_state.three_way_interaction_variables
+            three_way_interaction_variables=st.session_state.three_way_interaction_variables,
+            categorical_drop_values=st.session_state.categorical_drop_values,
+            mediators=st.session_state.mediators
         )
+
+        # Preprocess data to get the final dataframe shape
+        preview_data = preview_estimator._preprocess_data()
+        preview_data = preview_estimator._construct_interaction_terms(preview_data)
+
+        # Display dataframe shape (as requested by user)
+        st.markdown("### 📊 DoubleML Dataframe Shape")
+        st.markdown("""
+        This shows the shape (rows, columns) of the dataframe that will be used in the DoubleML data object,
+        including all 2-way and 3-way interactions.
+        """)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Number of Rows", f"{preview_data.shape[0]:,}")
+        with col2:
+            st.metric("Number of Columns", f"{preview_data.shape[1]:,}")
+
+        st.info(f"""
+        **Dataframe shape:** {preview_data.shape[0]:,} rows × {preview_data.shape[1]:,} columns
+
+        This dataframe includes:
+        - Original variables (after preprocessing and dummification)
+        - All possible 2-way interactions (filtered by category)
+        - All possible 3-way interactions (filtered by category)
+        """)
+
+        st.markdown("---")
+        st.markdown("### 📋 Treatment Variables to be Estimated")
+        st.markdown("""
+        The following treatment effects will be estimated by the DML model.
+        This list **exactly matches** what will be passed to the DoubleML object via the `d_cols` parameter.
+        """)
 
         preview = preview_estimator.preview_treatment_variables()
 
@@ -989,7 +1114,9 @@ def step_4_run_analysis():
                 outcome=st.session_state.outcome,
                 column_types=st.session_state.column_types,
                 two_way_interaction_variables=st.session_state.two_way_interaction_variables,
-                three_way_interaction_variables=st.session_state.three_way_interaction_variables
+                three_way_interaction_variables=st.session_state.three_way_interaction_variables,
+                categorical_drop_values=st.session_state.categorical_drop_values,
+                mediators=st.session_state.mediators
             )
 
             results = estimator.estimate_ate(
@@ -1013,58 +1140,6 @@ def step_4_run_analysis():
     # Display results directly if available (following Sample_Analysis.ipynb)
     if st.session_state.results is not None:
         results = st.session_state.results
-
-        st.markdown("---")
-
-        # Display treatment variables breakdown
-        st.markdown("### 📋 Treatment Variables Estimated")
-        st.markdown("""
-        The following treatment effects were estimated by the DML model.
-        Each variable represents a separate causal effect on the outcome.
-        """)
-
-        # Get categorized treatment variables from results
-        main_treatment_vars = results.get('main_treatment_vars', [])
-        two_way_vars = results.get('two_way_interaction_vars', [])
-        three_way_vars = results.get('three_way_interaction_vars', [])
-
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Variables", len(main_treatment_vars) + len(two_way_vars) + len(three_way_vars))
-        with col2:
-            st.metric("Main Treatment", len(main_treatment_vars))
-        with col3:
-            st.metric("2-way Interactions", len(two_way_vars))
-        with col4:
-            st.metric("3-way Interactions", len(three_way_vars))
-
-        # Display organized list
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("#### Main Treatment Effect")
-            if main_treatment_vars:
-                for var in main_treatment_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col2:
-            st.markdown("#### 2-way Interaction(s)")
-            if two_way_vars:
-                for var in two_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col3:
-            st.markdown("#### 3-way Interactions")
-            if three_way_vars:
-                for var in three_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
 
         st.markdown("---")
         st.markdown("### 📊 DML Estimation Results")
