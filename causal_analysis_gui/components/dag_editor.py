@@ -413,23 +413,23 @@ class DAGEditor:
         # Add legend explaining the color coding
         st.markdown("#### Legend")
         legend_html = """
-        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; margin-top: 10px;">
+        <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin-top: 10px; border: 2px solid #e0e0e0;">
             <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center;">
                 <div style="display: flex; align-items: center;">
                     <div style="width: 20px; height: 20px; background-color: #FFA500; border-radius: 50%; margin-right: 8px;"></div>
-                    <span><strong>Treatment</strong></span>
+                    <span style="color: #000000; font-weight: 500;"><strong>Treatment</strong></span>
                 </div>
                 <div style="display: flex; align-items: center;">
                     <div style="width: 20px; height: 20px; background-color: #90EE90; border-radius: 50%; margin-right: 8px;"></div>
-                    <span><strong>Outcome</strong></span>
+                    <span style="color: #000000; font-weight: 500;"><strong>Outcome</strong></span>
                 </div>
                 <div style="display: flex; align-items: center;">
                     <div style="width: 20px; height: 20px; background-color: #FF6B6B; border-radius: 50%; margin-right: 8px;"></div>
-                    <span><strong>Mediator</strong> (has incoming edges and outgoing edge to outcome)</span>
+                    <span style="color: #000000; font-weight: 500;"><strong>Mediator</strong> (has incoming edges and outgoing edge to outcome)</span>
                 </div>
                 <div style="display: flex; align-items: center;">
                     <div style="width: 20px; height: 20px; background-color: #ADD8E6; border-radius: 50%; margin-right: 8px;"></div>
-                    <span><strong>Covariate</strong></span>
+                    <span style="color: #000000; font-weight: 500;"><strong>Covariate</strong></span>
                 </div>
             </div>
         </div>

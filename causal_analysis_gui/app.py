@@ -690,9 +690,30 @@ def step_3_specify_interactions():
         st.error("❌ No variables available for interactions (only treatment and outcome in DAG)")
         return
 
+    # Identify mediators: nodes that have incoming edges AND outgoing edges to outcome
+    # These should NOT be included in interactions as they are on the causal path
+    mediators = set()
+    for node in all_variables:
+        # Check if node has incoming edges
+        has_incoming = len(list(st.session_state.dag.predecessors(node))) > 0
+        # Check if node has outgoing edge to outcome
+        has_outgoing_to_outcome = st.session_state.outcome in st.session_state.dag.successors(node)
+
+        if has_incoming and has_outgoing_to_outcome:
+            mediators.add(node)
+
+    # Remove mediators from available variables
+    all_variables = [v for v in all_variables if v not in mediators]
+
+    if not all_variables:
+        st.error("❌ No variables available for interactions (all non-treatment/outcome variables are mediators)")
+        return
+
     # Identify root nodes (variables with no predecessors) - these are good candidates
     root_nodes = [node for node in all_variables if st.session_state.dag.in_degree(node) == 0]
 
+    if mediators:
+        st.warning(f"⚠️ **Mediators excluded from interaction selection** (on causal path): {', '.join(mediators)}")
     st.info(f"💡 **Root nodes in your DAG** (good candidates for interactions): {', '.join(root_nodes) if root_nodes else 'None'}")
 
     st.subheader("Select Interaction Variables")
@@ -930,6 +951,62 @@ def step_5_view_results():
         The effect of **{st.session_state.treatment}** on **{st.session_state.outcome}** is not
         statistically significant at the 0.05 level. We cannot confidently conclude there is a causal effect.
         """)
+
+    # Display comprehensive results dataframe
+    if results.get('detailed_results_df') is not None:
+        st.markdown("---")
+        st.markdown("### 📊 Comprehensive Results (Sorted by p-value)")
+        st.markdown("""
+        All treatment effects including main effect and interaction terms.
+        Results are sorted by statistical significance (p-value).
+        """)
+
+        detailed_df = results['detailed_results_df']
+
+        # Display metrics for summary
+        total_treatments = len(detailed_df)
+        sig_1pct = detailed_df['sig_1pct'].sum()
+        sig_5pct = detailed_df['sig_5pct'].sum()
+        sig_10pct = detailed_df['sig_10pct'].sum()
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Treatments", total_treatments)
+        with col2:
+            st.metric("Sig. at 1%", sig_1pct)
+        with col3:
+            st.metric("Sig. at 5%", sig_5pct)
+        with col4:
+            st.metric("Sig. at 10%", sig_10pct)
+
+        # Display the detailed dataframe
+        st.markdown("#### Detailed Results Table")
+
+        # Format the dataframe for better display
+        display_df = detailed_df.copy()
+        display_df['coefficient'] = display_df['coefficient'].apply(lambda x: f"{x:.6f}")
+        display_df['std_error'] = display_df['std_error'].apply(lambda x: f"{x:.6f}")
+        display_df['t_statistic'] = display_df['t_statistic'].apply(lambda x: f"{x:.4f}")
+        display_df['p_value'] = display_df['p_value'].apply(lambda x: f"{x:.6f}")
+        display_df['ci_lower_95'] = display_df['ci_lower_95'].apply(lambda x: f"{x:.6f}")
+        display_df['ci_upper_95'] = display_df['ci_upper_95'].apply(lambda x: f"{x:.6f}")
+
+        # Add significance stars
+        def add_stars(row):
+            if row['sig_1pct']:
+                return '***'
+            elif row['sig_5pct']:
+                return '**'
+            elif row['sig_10pct']:
+                return '*'
+            else:
+                return ''
+
+        display_df['significance'] = detailed_df.apply(add_stars, axis=1)
+
+        st.dataframe(display_df, use_container_width=True, height=400)
+
+        st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
 
     # Display interaction term results prominently
     if results.get('interaction_results') and len(results['interaction_results']) > 0:
