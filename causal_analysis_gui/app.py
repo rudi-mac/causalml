@@ -891,6 +891,83 @@ def step_4_run_analysis():
                 help="Number of folds for cross-fitting"
             )
 
+    # Preview treatment variables that will be estimated
+    st.markdown("---")
+    st.markdown("### 📋 Treatment Variables to be Estimated")
+    st.markdown("""
+    The following treatment effects will be estimated by the DML model.
+    This list **exactly matches** what will be passed to the DoubleML object via the `d_cols` parameter.
+    """)
+
+    try:
+        # Create estimator preview (without running the full analysis)
+        preview_estimator = DMLEstimatorDoubleML(
+            data=st.session_state.data,
+            dag=st.session_state.dag,
+            treatment=st.session_state.treatment,
+            outcome=st.session_state.outcome,
+            column_types=st.session_state.column_types,
+            two_way_interaction_variables=st.session_state.two_way_interaction_variables,
+            three_way_interaction_variables=st.session_state.three_way_interaction_variables
+        )
+
+        preview = preview_estimator.preview_treatment_variables()
+
+        # Display metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Variables", len(preview['treatment_variables']))
+        with col2:
+            st.metric("Main Treatment", len(preview['main_treatment_vars']))
+        with col3:
+            st.metric("2-way Interactions", len(preview['two_way_interaction_vars']))
+        with col4:
+            st.metric("3-way Interactions", len(preview['three_way_interaction_vars']))
+
+        # Display organized list
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("#### Main Treatment Effects")
+            if preview['main_treatment_vars']:
+                for var in preview['main_treatment_vars']:
+                    st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
+
+        with col2:
+            st.markdown("#### 2-way Interactions")
+            if preview['two_way_interaction_vars']:
+                for var in preview['two_way_interaction_vars']:
+                    st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
+
+        with col3:
+            st.markdown("#### 3-way Interactions")
+            if preview['three_way_interaction_vars']:
+                # Show first 10, then expandable for rest
+                preview_vars = preview['three_way_interaction_vars'][:10]
+                for var in preview_vars:
+                    st.markdown(f"- `{var}`")
+                if len(preview['three_way_interaction_vars']) > 10:
+                    with st.expander(f"Show {len(preview['three_way_interaction_vars']) - 10} more..."):
+                        for var in preview['three_way_interaction_vars'][10:]:
+                            st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
+
+        st.info(f"""
+        **Note:** This list shows all {len(preview['treatment_variables'])} treatment variables that will be estimated.
+        These are the exact variables passed to DoubleML via `d_cols`.
+        """)
+
+    except Exception as e:
+        st.warning(f"⚠️ Could not preview treatment variables: {str(e)}")
+        st.markdown("The preview will be generated when you run the analysis.")
+
+    st.markdown("---")
+
     # Run analysis button
     if st.button("🚀 Run DML Analysis", type="primary", use_container_width=True):
         try:

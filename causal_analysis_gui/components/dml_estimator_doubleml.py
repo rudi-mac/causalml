@@ -48,6 +48,63 @@ class DMLEstimatorDoubleML:
         self.interaction_terms = []
         self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
 
+    def preview_treatment_variables(self):
+        """
+        Preview the treatment variables that will be estimated WITHOUT running the full analysis.
+        This is used to show users what will be estimated before they click "Run DML Analysis".
+
+        Returns:
+            dict: {
+                'main_treatment_vars': list of main treatment variable names,
+                'two_way_interaction_vars': list of 2-way interaction names,
+                'three_way_interaction_vars': list of 3-way interaction names,
+                'treatment_variables': complete ordered list of all treatment variables
+            }
+        """
+        # Preprocess data (includes dummification of categorical variables)
+        processed_data = self._preprocess_data()
+
+        # Construct interaction terms
+        processed_data = self._construct_interaction_terms(processed_data)
+
+        # Build treatment_variables list following the same logic as estimate_ate
+        treatment_variables = []
+
+        # Step 1: Add main treatment variable(s)
+        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
+            for dummy_col in self.categorical_mapping[self.treatment]:
+                if dummy_col in processed_data.columns:
+                    treatment_variables.append(dummy_col)
+        elif self.treatment in processed_data.columns:
+            treatment_variables.append(self.treatment)
+
+        # Step 2: Add user-selected two-way interaction variables as separate main treatments
+        for var in self.two_way_interaction_variables:
+            if var in processed_data.columns:
+                treatment_variables.append(var)
+            elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
+                for dummy_col in self.categorical_mapping[var]:
+                    if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
+                        treatment_variables.append(dummy_col)
+
+        # Step 3 & 4: Add interaction terms
+        for term in self.interaction_terms:
+            if term['name'] in processed_data.columns:
+                treatment_variables.append(term['name'])
+
+        # Categorize treatment variables
+        interaction_names = [t['name'] for t in self.interaction_terms]
+        main_treatment_vars = [tv for tv in treatment_variables if tv not in interaction_names]
+        two_way_interaction_vars = [t['name'] for t in self.interaction_terms if t['order'] == 2]
+        three_way_interaction_vars = [t['name'] for t in self.interaction_terms if t['order'] == 3]
+
+        return {
+            'main_treatment_vars': main_treatment_vars,
+            'two_way_interaction_vars': two_way_interaction_vars,
+            'three_way_interaction_vars': three_way_interaction_vars,
+            'treatment_variables': treatment_variables
+        }
+
     def estimate_ate(self, discrete_treatment=True, n_splits=5, alpha=0.05, progress_callback=None):
         """
         Estimate Average Treatment Effect using DML with doubleml library
@@ -78,11 +135,13 @@ class DMLEstimatorDoubleML:
             processed_data = self._construct_interaction_terms(processed_data)
 
             # Create list of all treatments following Sample_Analysis.ipynb logic:
-            # After dummification, categorical variables become multiple columns
-            # Each dummy column is a separate treatment effect to estimate
+            # 1. Add main treatment variable(s)
+            # 2. Add user-selected two-way variables as separate main treatments
+            # 3. Add 2-way interaction terms
+            # 4. Add 3-way interaction terms
             treatment_variables = []
 
-            # Add main treatment variable(s)
+            # Step 1: Add main treatment variable(s)
             # If treatment was categorical, it's now multiple dummy columns
             if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
                 # Treatment was categorical - add all dummy columns
@@ -94,22 +153,36 @@ class DMLEstimatorDoubleML:
                 # Treatment is binary or continuous
                 treatment_variables.append(self.treatment)
 
-            # Add interaction terms as additional treatments
+            # Step 2: Add user-selected two-way interaction variables as separate main treatments
+            # Following Sample_Analysis.ipynb: both 'Degree' and 'Gender_Female' are added as main treatments
+            for var in self.two_way_interaction_variables:
+                if var in processed_data.columns:
+                    treatment_variables.append(var)
+                # Also handle dummified variables
+                elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
+                    for dummy_col in self.categorical_mapping[var]:
+                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
+                            treatment_variables.append(dummy_col)
+
+            # Step 3 & 4: Add interaction terms as additional treatments
             # These include all 2-way and 3-way interactions with treatment
             for term in self.interaction_terms:
                 if term['name'] in processed_data.columns:
                     treatment_variables.append(term['name'])
 
             # Count main treatment effects and interaction terms
-            n_main_treatment = len([tv for tv in treatment_variables if tv not in [t['name'] for t in self.interaction_terms]])
+            # Main treatments are those NOT in interaction_terms list
+            interaction_names = [t['name'] for t in self.interaction_terms]
+            n_main_treatment = len([tv for tv in treatment_variables if tv not in interaction_names])
             n_two_way = len([t for t in self.interaction_terms if t['order'] == 2])
             n_three_way = len([t for t in self.interaction_terms if t['order'] == 3])
 
-            print(f"Estimating effects for {len(treatment_variables)} treatments:")
+            print(f"\nEstimating effects for {len(treatment_variables)} treatments:")
             print(f"  - Main treatment effects: {n_main_treatment}")
             print(f"  - 2-way interaction terms: {n_two_way}")
             print(f"  - 3-way interaction terms: {n_three_way}")
             print(f"  - Total: {len(treatment_variables)}")
+            print(f"\nTreatment variables list: {treatment_variables}")
 
             # Create DoubleML data object
             if progress_callback:
@@ -293,7 +366,6 @@ class DMLEstimatorDoubleML:
         print("CONSTRUCTING INTERACTION TERMS (Sample_Analysis.ipynb logic)")
         print("="*80)
 
-        result_data = data.copy()
         self.interaction_terms = []
 
         # Get all variable names (excluding outcome)
@@ -307,8 +379,9 @@ class DMLEstimatorDoubleML:
         all_combinations_2w = list(combinations(all_vars, 2))
         print(f"Total 2-way combinations: {len(all_combinations_2w)}")
 
-        # Filter: Remove interactions within same category
+        # Build all 2-way interaction columns at once to avoid DataFrame fragmentation
         interaction_terms_2way = []
+        two_way_dict = {}
         for combi in all_combinations_2w:
             # Extract category prefix (first 6 characters)
             prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
@@ -317,7 +390,7 @@ class DMLEstimatorDoubleML:
             # Only keep if different categories
             if prefix1 != prefix2:
                 column_name = f"{combi[0]}:{combi[1]}"
-                result_data[column_name] = data[combi[0]] * data[combi[1]]
+                two_way_dict[column_name] = data[combi[0]] * data[combi[1]]
                 interaction_terms_2way.append(column_name)
 
         print(f"2-way interactions created (after filtering): {len(interaction_terms_2way)}")
@@ -329,8 +402,9 @@ class DMLEstimatorDoubleML:
         all_combinations_3w = list(combinations(all_vars, 3))
         print(f"Total 3-way combinations: {len(all_combinations_3w)}")
 
-        # Filter: Remove interactions within same category
+        # Build all 3-way interaction columns at once to avoid DataFrame fragmentation
         interaction_terms_3way = []
+        three_way_dict = {}
         for combi in all_combinations_3w:
             # Extract category prefixes
             prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
@@ -340,10 +414,17 @@ class DMLEstimatorDoubleML:
             # Only keep if all different categories
             if (prefix1 != prefix2) and (prefix1 != prefix3) and (prefix2 != prefix3):
                 column_name = f"{combi[0]}:{combi[1]}:{combi[2]}"
-                result_data[column_name] = data[combi[0]] * data[combi[1]] * data[combi[2]]
+                three_way_dict[column_name] = data[combi[0]] * data[combi[1]] * data[combi[2]]
                 interaction_terms_3way.append(column_name)
 
         print(f"3-way interactions created (after filtering): {len(interaction_terms_3way)}")
+
+        # Concatenate all interaction columns at once to avoid fragmentation warning
+        print("\n[COMBINING] Concatenating all interaction columns to avoid DataFrame fragmentation...")
+        two_way_df = pd.DataFrame(two_way_dict)
+        three_way_df = pd.DataFrame(three_way_dict)
+        result_data = pd.concat([data, two_way_df, three_way_df], axis=1).copy()
+        print(f"Combined data shape: {result_data.shape}")
 
         # ========================================
         # STEP 3: Construct treatment variables based on user input
@@ -358,79 +439,74 @@ class DMLEstimatorDoubleML:
             print("No interaction variables specified by user - using main treatment only")
             return result_data
 
-        # Filter interaction variables to only those that exist in data
-        valid_two_way = [v for v in self.two_way_interaction_variables if v in data.columns]
-        valid_three_way = [v for v in self.three_way_interaction_variables if v in data.columns]
+        # Filter interaction variables to only those that exist in data after preprocessing
+        # Handle both original and dummified variable names
+        valid_two_way = []
+        for v in self.two_way_interaction_variables:
+            if v in data.columns:
+                valid_two_way.append(v)
+            # Also check if variable was dummified
+            elif hasattr(self, 'categorical_mapping') and v in self.categorical_mapping:
+                # Add all dummy columns for this variable
+                valid_two_way.extend([d for d in self.categorical_mapping[v] if d in data.columns])
 
-        print(f"User-selected two-way variables: {valid_two_way}")
-        print(f"User-selected three-way variables: {valid_three_way}")
+        valid_three_way = []
+        for v in self.three_way_interaction_variables:
+            if v in data.columns:
+                valid_three_way.append(v)
+            # Also check if variable was dummified
+            elif hasattr(self, 'categorical_mapping') and v in self.categorical_mapping:
+                # Add all dummy columns for this variable
+                valid_three_way.extend([d for d in self.categorical_mapping[v] if d in data.columns])
 
-        # Now identify which interactions to treat as "treatments of interest"
-        # Based on Sample_Analysis.ipynb: treatment, treatment:var, treatment:var1:var2
-        # Use flexible regex pattern matching like in the notebook
+        print(f"User-selected two-way variables (after dummification): {valid_two_way}")
+        print(f"User-selected three-way variables (after dummification): {valid_three_way}")
 
-        # Create regex pattern for treatment (flexible position)
-        treatment_pattern = re.compile(f".*{re.escape(self.treatment)}.*", re.IGNORECASE)
+        # Following Sample_Analysis.ipynb: Match all interactions containing treatment AND the selected variables
+        # Use regex pattern matching like in the notebook
 
-        # Find matching 2-way interactions
-        # Logic: Find all 2-way interactions that contain BOTH treatment AND a two_way variable
+        # Get list of treatment variable(s) - handle dummified treatment
+        treatment_vars = []
+        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
+            treatment_vars = [d for d in self.categorical_mapping[self.treatment] if d in data.columns]
+        elif self.treatment in data.columns:
+            treatment_vars = [self.treatment]
+
+        print(f"Treatment variable(s): {treatment_vars}")
+
+        # Find ALL 2-way interactions that contain treatment AND a two_way variable
         for interaction in interaction_terms_2way:
-            # Check if interaction contains treatment
-            if re.search(treatment_pattern, interaction):
-                # Check if it contains any of the two_way variables
-                for var in valid_two_way:
-                    var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
-                    if re.search(var_pattern, interaction):
-                        # Verify it has exactly 1 colon (2-way interaction)
-                        if interaction.count(':') == 1:
-                            # Check that the column is not constant (has variation)
-                            if result_data[interaction].nunique() > 1:
-                                # Extract the actual variables from the interaction name
-                                parts = interaction.split(':')
-                                self.interaction_terms.append({
-                                    'name': interaction,
-                                    'variables': parts,
-                                    'order': 2
-                                })
-                                break  # Only add once per interaction
+            parts = interaction.split(':')
+            # Check if interaction contains any treatment variable AND any two_way variable
+            has_treatment = any(tv in parts for tv in treatment_vars)
+            has_two_way = any(v in parts for v in valid_two_way)
 
-        # Find matching 3-way interactions
-        # Logic: Find all 3-way interactions that contain treatment AND a two_way variable AND a three_way variable
+            if has_treatment and has_two_way:
+                # Check that the column is not constant (has variation)
+                if result_data[interaction].nunique() > 1:
+                    self.interaction_terms.append({
+                        'name': interaction,
+                        'variables': parts,
+                        'order': 2
+                    })
+
+        # Find ALL 3-way interactions that contain treatment AND a two_way variable AND a third variable
         for interaction in interaction_terms_3way:
-            # Check if interaction contains treatment
-            if re.search(treatment_pattern, interaction):
-                # Check if it contains any of the two_way variables
-                contains_two_way = False
-                matching_two_way_var = None
-                for var in valid_two_way:
-                    var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
-                    if re.search(var_pattern, interaction):
-                        contains_two_way = True
-                        matching_two_way_var = var
-                        break
+            parts = interaction.split(':')
+            # Check if interaction contains treatment AND any two_way variable AND another variable
+            has_treatment = any(tv in parts for tv in treatment_vars)
+            has_two_way = any(v in parts for v in valid_two_way)
+            # For three-way, also check if it has a third variable (from three_way list or two_way list)
+            has_third = any(v in parts for v in valid_three_way) or len([v for v in valid_two_way if v in parts]) >= 2
 
-                if contains_two_way:
-                    # Check if it contains any of the three_way variables (or another two_way variable)
-                    contains_third = False
-                    for var in valid_three_way + valid_two_way:
-                        if var != matching_two_way_var:  # Don't match the same variable twice
-                            var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
-                            if re.search(var_pattern, interaction):
-                                contains_third = True
-                                break
-
-                    if contains_third:
-                        # Verify it has exactly 2 colons (3-way interaction)
-                        if interaction.count(':') == 2:
-                            # Check that the column is not constant (has variation)
-                            if result_data[interaction].nunique() > 1:
-                                # Extract the actual variables from the interaction name
-                                parts = interaction.split(':')
-                                self.interaction_terms.append({
-                                    'name': interaction,
-                                    'variables': parts,
-                                    'order': 3
-                                })
+            if has_treatment and has_two_way and has_third:
+                # Check that the column is not constant (has variation)
+                if result_data[interaction].nunique() > 1:
+                    self.interaction_terms.append({
+                        'name': interaction,
+                        'variables': parts,
+                        'order': 3
+                    })
 
         n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
         n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)
