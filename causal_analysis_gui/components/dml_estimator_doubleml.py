@@ -364,14 +364,20 @@ class DMLEstimatorDoubleML:
         print(f"Total 2-way combinations: {len(all_combinations_2w)}")
 
         # Build all 2-way interaction columns at once to avoid DataFrame fragmentation
+        # CRITICAL FILTERING LOGIC (from Sample_Analysis.ipynb cell 35):
+        # Only create interactions between variables from DIFFERENT categorical groups.
+        # E.g., Ethnic_Asian:Ethnic_Black should NOT be created (both start with "Ethnic")
+        # But Ethnic_Asian:Region_South SHOULD be created (different prefixes)
         interaction_terms_2way = []
         two_way_dict = {}
         for combi in all_combinations_2w:
-            # Extract category prefix (first 6 characters)
-            prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
-            prefix2 = combi[1][:6] if len(combi[1]) >= 6 else combi[1]
+            # Extract category prefix (first 6 characters) to identify which categorical variable
+            # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
+            prefix1 = combi[0][:6]
+            prefix2 = combi[1][:6]
 
-            # Only keep if different categories
+            # Following Sample_Analysis.ipynb logic: combi[0][:6] != combi[1][:6]
+            # Only keep interactions where the two columns come from DIFFERENT categorical variables
             if prefix1 != prefix2:
                 column_name = f"{combi[0]}:{combi[1]}"
                 two_way_dict[column_name] = data[combi[0]] * data[combi[1]]
@@ -387,15 +393,22 @@ class DMLEstimatorDoubleML:
         print(f"Total 3-way combinations: {len(all_combinations_3w)}")
 
         # Build all 3-way interaction columns at once to avoid DataFrame fragmentation
+        # CRITICAL FILTERING LOGIC (from Sample_Analysis.ipynb cell 37):
+        # Only create interactions between variables from THREE DIFFERENT categorical groups.
+        # E.g., Ethnic_Asian:Father_College:Mother_12_grades SHOULD be created (all different prefixes)
+        # But Ethnic_Asian:Ethnic_Black:Region_South should NOT (two "Ethnic" columns)
         interaction_terms_3way = []
         three_way_dict = {}
         for combi in all_combinations_3w:
-            # Extract category prefixes
-            prefix1 = combi[0][:6] if len(combi[0]) >= 6 else combi[0]
-            prefix2 = combi[1][:6] if len(combi[1]) >= 6 else combi[1]
-            prefix3 = combi[2][:6] if len(combi[2]) >= 6 else combi[2]
+            # Extract category prefixes (first 6 characters) to identify which categorical variable
+            # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
+            prefix1 = combi[0][:6]
+            prefix2 = combi[1][:6]
+            prefix3 = combi[2][:6]
 
-            # Only keep if all different categories
+            # Following Sample_Analysis.ipynb logic:
+            # (combi[0][:6] != combi[1][:6]) & (combi[0][:6] != combi[2][:6]) & (combi[1][:6] != combi[2][:6])
+            # Only keep interactions where ALL THREE columns come from DIFFERENT categorical variables
             if (prefix1 != prefix2) and (prefix1 != prefix3) and (prefix2 != prefix3):
                 column_name = f"{combi[0]}:{combi[1]}:{combi[2]}"
                 three_way_dict[column_name] = data[combi[0]] * data[combi[1]] * data[combi[2]]
