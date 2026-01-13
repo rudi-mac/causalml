@@ -893,11 +893,6 @@ def step_4_run_analysis():
 
     # Preview treatment variables that will be estimated
     st.markdown("---")
-    st.markdown("### 📋 Treatment Variables to be Estimated")
-    st.markdown("""
-    The following treatment effects will be estimated by the DML model.
-    This list **exactly matches** what will be passed to the DoubleML object via the `d_cols` parameter.
-    """)
 
     try:
         # Create estimator preview (without running the full analysis)
@@ -910,6 +905,39 @@ def step_4_run_analysis():
             two_way_interaction_variables=st.session_state.two_way_interaction_variables,
             three_way_interaction_variables=st.session_state.three_way_interaction_variables
         )
+
+        # Preprocess data to get the final dataframe shape
+        preview_data = preview_estimator._preprocess_data()
+        preview_data = preview_estimator._construct_interaction_terms(preview_data)
+
+        # Display dataframe shape (as requested by user)
+        st.markdown("### 📊 DoubleML Dataframe Shape")
+        st.markdown("""
+        This shows the shape (rows, columns) of the dataframe that will be used in the DoubleML data object,
+        including all 2-way and 3-way interactions.
+        """)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Number of Rows", f"{preview_data.shape[0]:,}")
+        with col2:
+            st.metric("Number of Columns", f"{preview_data.shape[1]:,}")
+
+        st.info(f"""
+        **Dataframe shape:** {preview_data.shape[0]:,} rows × {preview_data.shape[1]:,} columns
+
+        This dataframe includes:
+        - Original variables (after preprocessing and dummification)
+        - All possible 2-way interactions (filtered by category)
+        - All possible 3-way interactions (filtered by category)
+        """)
+
+        st.markdown("---")
+        st.markdown("### 📋 Treatment Variables to be Estimated")
+        st.markdown("""
+        The following treatment effects will be estimated by the DML model.
+        This list **exactly matches** what will be passed to the DoubleML object via the `d_cols` parameter.
+        """)
 
         preview = preview_estimator.preview_treatment_variables()
 

@@ -70,7 +70,7 @@ class DMLEstimatorDoubleML:
         # Build treatment_variables list following the same logic as estimate_ate
         treatment_variables = []
 
-        # Step 1: Add main treatment variable(s)
+        # Step 1: Add ONLY the main treatment variable (the one selected in Step 1)
         if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
             for dummy_col in self.categorical_mapping[self.treatment]:
                 if dummy_col in processed_data.columns:
@@ -78,16 +78,7 @@ class DMLEstimatorDoubleML:
         elif self.treatment in processed_data.columns:
             treatment_variables.append(self.treatment)
 
-        # Step 2: Add user-selected two-way interaction variables as separate main treatments
-        for var in self.two_way_interaction_variables:
-            if var in processed_data.columns:
-                treatment_variables.append(var)
-            elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
-                for dummy_col in self.categorical_mapping[var]:
-                    if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
-                        treatment_variables.append(dummy_col)
-
-        # Step 3 & 4: Add interaction terms
+        # Step 2: Add interaction terms
         for term in self.interaction_terms:
             if term['name'] in processed_data.columns:
                 treatment_variables.append(term['name'])
@@ -134,14 +125,13 @@ class DMLEstimatorDoubleML:
                 progress_callback(0.2, 1.0, "Constructing interaction terms...")
             processed_data = self._construct_interaction_terms(processed_data)
 
-            # Create list of all treatments following Sample_Analysis.ipynb logic:
-            # 1. Add main treatment variable(s)
-            # 2. Add user-selected two-way variables as separate main treatments
-            # 3. Add 2-way interaction terms
-            # 4. Add 3-way interaction terms
+            # Create list of treatment variables to estimate:
+            # IMPORTANT: Main treatment is ONLY the treatment variable from Step 1
+            # All 2-way and 3-way interactions must include this treatment variable
+            # (User requirement: "the main treatment effect can only be one variable")
             treatment_variables = []
 
-            # Step 1: Add main treatment variable(s)
+            # Step 1: Add ONLY the main treatment variable (the one selected in Step 1)
             # If treatment was categorical, it's now multiple dummy columns
             if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
                 # Treatment was categorical - add all dummy columns
@@ -153,19 +143,8 @@ class DMLEstimatorDoubleML:
                 # Treatment is binary or continuous
                 treatment_variables.append(self.treatment)
 
-            # Step 2: Add user-selected two-way interaction variables as separate main treatments
-            # Following Sample_Analysis.ipynb: both 'Degree' and 'Gender_Female' are added as main treatments
-            for var in self.two_way_interaction_variables:
-                if var in processed_data.columns:
-                    treatment_variables.append(var)
-                # Also handle dummified variables
-                elif hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
-                    for dummy_col in self.categorical_mapping[var]:
-                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
-                            treatment_variables.append(dummy_col)
-
-            # Step 3 & 4: Add interaction terms as additional treatments
-            # These include all 2-way and 3-way interactions with treatment
+            # Step 2: Add interaction terms as additional treatments
+            # These include all 2-way and 3-way interactions (which already include treatment by construction)
             for term in self.interaction_terms:
                 if term['name'] in processed_data.columns:
                     treatment_variables.append(term['name'])
@@ -349,12 +328,13 @@ class DMLEstimatorDoubleML:
     def _construct_interaction_terms(self, data):
         """
         Construct ALL combinatorially possible interaction terms following Sample_Analysis.ipynb logic
-        Steps:
-        1. Generate ALL 2-way combinations of variables (excluding outcome)
-        2. Filter out interactions within same category (e.g., no Father_X:Father_Y)
-        3. Generate ALL 3-way combinations of variables (excluding outcome)
-        4. Filter out interactions within same category
-        5. Construct treatment variables based on user input from Step 3
+        Steps (from Sample_Analysis.ipynb cells 35-37):
+        1. Create unique_values list: all columns EXCEPT outcome (includes treatment)
+        2. Generate ALL 2-way combinations from unique_values: list(combinations(unique_values, 2))
+        3. Filter out interactions within same category (e.g., no Father_X:Father_Y)
+        4. Generate ALL 3-way combinations from unique_values: list(combinations(unique_values, 3))
+        5. Filter out interactions within same category
+        6. Select only interactions that include the main treatment variable
 
         Args:
             data (pd.DataFrame): Preprocessed data
@@ -368,15 +348,17 @@ class DMLEstimatorDoubleML:
 
         self.interaction_terms = []
 
-        # Get all variable names (excluding outcome)
-        all_vars = [col for col in data.columns if col != self.outcome]
-        print(f"\nTotal variables (excluding outcome): {len(all_vars)}")
+        # Following Sample_Analysis.ipynb cell 35: unique_values = causal_df.drop('Hourly_Salary_log',axis=1).columns
+        # This gets ALL columns except outcome (includes treatment)
+        unique_values = [col for col in data.columns if col != self.outcome]
+        print(f"\nStep 1: Created unique_values list (all columns except outcome): {len(unique_values)} variables")
+        print(f"unique_values = {unique_values[:10]}{'...' if len(unique_values) > 10 else ''}")
 
         # ========================================
-        # STEP 1: Generate ALL 2-way combinations
+        # STEP 2: Generate ALL 2-way combinations (Sample_Analysis.ipynb cell 35)
         # ========================================
-        print("\n[STEP 1] Generating all 2-way combinations...")
-        all_combinations_2w = list(combinations(all_vars, 2))
+        print("\n[STEP 2] Generating all 2-way combinations from unique_values...")
+        all_combinations_2w = list(combinations(unique_values, 2))
         print(f"Total 2-way combinations: {len(all_combinations_2w)}")
 
         # Build all 2-way interaction columns at once to avoid DataFrame fragmentation
@@ -396,10 +378,10 @@ class DMLEstimatorDoubleML:
         print(f"2-way interactions created (after filtering): {len(interaction_terms_2way)}")
 
         # ========================================
-        # STEP 2: Generate ALL 3-way combinations
+        # STEP 3: Generate ALL 3-way combinations (Sample_Analysis.ipynb cell 37)
         # ========================================
-        print("\n[STEP 2] Generating all 3-way combinations...")
-        all_combinations_3w = list(combinations(all_vars, 3))
+        print("\n[STEP 3] Generating all 3-way combinations from unique_values...")
+        all_combinations_3w = list(combinations(unique_values, 3))
         print(f"Total 3-way combinations: {len(all_combinations_3w)}")
 
         # Build all 3-way interaction columns at once to avoid DataFrame fragmentation
@@ -427,9 +409,19 @@ class DMLEstimatorDoubleML:
         print(f"Combined data shape: {result_data.shape}")
 
         # ========================================
-        # STEP 3: Construct treatment variables based on user input
+        # STEP 4: Construct treatment interaction terms based on user input
+        # Following Sample_Analysis.ipynb cell 12: All interactions MUST include main treatment variable
         # ========================================
-        print("\n[STEP 3] Constructing treatment variables based on user selection...")
+        print("\n[STEP 4] Constructing treatment interaction terms based on user selection...")
+
+        # Get list of treatment variable(s) - handle dummified treatment
+        treatment_vars = []
+        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
+            treatment_vars = [d for d in self.categorical_mapping[self.treatment] if d in data.columns]
+        elif self.treatment in data.columns:
+            treatment_vars = [self.treatment]
+
+        print(f"Main treatment variable(s): {treatment_vars}")
 
         # Legacy support
         if self.interaction_variables and not self.two_way_interaction_variables:
@@ -462,51 +454,55 @@ class DMLEstimatorDoubleML:
         print(f"User-selected two-way variables (after dummification): {valid_two_way}")
         print(f"User-selected three-way variables (after dummification): {valid_three_way}")
 
-        # Following Sample_Analysis.ipynb: Match all interactions containing treatment AND the selected variables
-        # Use regex pattern matching like in the notebook
-
-        # Get list of treatment variable(s) - handle dummified treatment
-        treatment_vars = []
-        if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
-            treatment_vars = [d for d in self.categorical_mapping[self.treatment] if d in data.columns]
-        elif self.treatment in data.columns:
-            treatment_vars = [self.treatment]
-
-        print(f"Treatment variable(s): {treatment_vars}")
+        # CRITICAL: All 2-way and 3-way interactions MUST include the main treatment variable
+        # Following Sample_Analysis.ipynb logic
 
         # Find ALL 2-way interactions that contain treatment AND a two_way variable
         for interaction in interaction_terms_2way:
             parts = interaction.split(':')
-            # Check if interaction contains any treatment variable AND any two_way variable
+            # Check if interaction contains any treatment variable
             has_treatment = any(tv in parts for tv in treatment_vars)
-            has_two_way = any(v in parts for v in valid_two_way)
 
-            if has_treatment and has_two_way:
-                # Check that the column is not constant (has variation)
-                if result_data[interaction].nunique() > 1:
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': parts,
-                        'order': 2
-                    })
+            # Only keep interactions that include treatment
+            if has_treatment:
+                # Also check if the other variable is in the user-selected two_way list
+                other_vars = [p for p in parts if p not in treatment_vars]
+                has_two_way_var = any(v in valid_two_way for v in other_vars)
 
-        # Find ALL 3-way interactions that contain treatment AND a two_way variable AND a third variable
+                if has_two_way_var:
+                    # Check that the column is not constant (has variation)
+                    if result_data[interaction].nunique() > 1:
+                        self.interaction_terms.append({
+                            'name': interaction,
+                            'variables': parts,
+                            'order': 2
+                        })
+
+        # Find ALL 3-way interactions that contain treatment AND two other selected variables
         for interaction in interaction_terms_3way:
             parts = interaction.split(':')
-            # Check if interaction contains treatment AND any two_way variable AND another variable
+            # Check if interaction contains treatment
             has_treatment = any(tv in parts for tv in treatment_vars)
-            has_two_way = any(v in parts for v in valid_two_way)
-            # For three-way, also check if it has a third variable (from three_way list or two_way list)
-            has_third = any(v in parts for v in valid_three_way) or len([v for v in valid_two_way if v in parts]) >= 2
 
-            if has_treatment and has_two_way and has_third:
-                # Check that the column is not constant (has variation)
-                if result_data[interaction].nunique() > 1:
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': parts,
-                        'order': 3
-                    })
+            # Only keep interactions that include treatment
+            if has_treatment:
+                # Get the other two variables (not treatment)
+                other_vars = [p for p in parts if p not in treatment_vars]
+
+                # For 3-way, we need at least 2 other variables besides treatment
+                # These can be from two_way list or three_way list
+                all_selected_vars = list(set(valid_two_way + valid_three_way))
+                matching_vars = [v for v in other_vars if v in all_selected_vars]
+
+                # We need at least 2 matching variables (besides treatment) to form a valid 3-way interaction
+                if len(matching_vars) >= 2:
+                    # Check that the column is not constant (has variation)
+                    if result_data[interaction].nunique() > 1:
+                        self.interaction_terms.append({
+                            'name': interaction,
+                            'variables': parts,
+                            'order': 3
+                        })
 
         n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
         n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)
