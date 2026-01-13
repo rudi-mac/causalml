@@ -48,7 +48,7 @@ class DMLEstimatorDoubleML:
         self.interaction_terms = []
         self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
 
-    def estimate_ate(self, discrete_treatment=True, n_splits=5, alpha=0.05):
+    def estimate_ate(self, discrete_treatment=True, n_splits=5, alpha=0.05, progress_callback=None):
         """
         Estimate Average Treatment Effect using DML with doubleml library
         Estimates main effect and all interaction effects
@@ -57,6 +57,8 @@ class DMLEstimatorDoubleML:
             discrete_treatment (bool): Whether treatment is discrete
             n_splits (int): Number of cross-validation splits
             alpha (float): Significance level for confidence intervals
+            progress_callback (callable): Optional callback function for progress updates
+                                        Should accept (current, total, message) parameters
 
         Returns:
             dict: Results including ATE, standard error, confidence intervals, interaction results
@@ -66,9 +68,13 @@ class DMLEstimatorDoubleML:
             from scipy import stats
 
             # Preprocess data (includes dummification of categorical variables)
+            if progress_callback:
+                progress_callback(0.1, 1.0, "Preprocessing data and handling categorical variables...")
             processed_data = self._preprocess_data()
 
             # Construct interaction terms
+            if progress_callback:
+                progress_callback(0.2, 1.0, "Constructing interaction terms...")
             processed_data = self._construct_interaction_terms(processed_data)
 
             # Create list of all treatments following Sample_Analysis.ipynb logic:
@@ -88,31 +94,26 @@ class DMLEstimatorDoubleML:
                 # Treatment is binary or continuous
                 treatment_variables.append(self.treatment)
 
-            # Add two_way interaction variables as separate main effects
-            # These are like Gender_Female in Sample_Analysis - also treated as main effects
-            for var in self.two_way_interaction_variables:
-                # Check if this variable was dummified
-                if hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
-                    # Variable was categorical - add all its dummy columns
-                    for dummy_col in self.categorical_mapping[var]:
-                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
-                            treatment_variables.append(dummy_col)
-                elif var in processed_data.columns and var not in treatment_variables:
-                    # Variable is binary or continuous
-                    treatment_variables.append(var)
-
             # Add interaction terms as additional treatments
+            # These include all 2-way and 3-way interactions with treatment
             for term in self.interaction_terms:
                 if term['name'] in processed_data.columns:
                     treatment_variables.append(term['name'])
 
+            # Count main treatment effects and interaction terms
+            n_main_treatment = len([tv for tv in treatment_variables if tv not in [t['name'] for t in self.interaction_terms]])
+            n_two_way = len([t for t in self.interaction_terms if t['order'] == 2])
+            n_three_way = len([t for t in self.interaction_terms if t['order'] == 3])
+
             print(f"Estimating effects for {len(treatment_variables)} treatments:")
-            print(f"  - Main treatment: {self.treatment}")
-            print(f"  - Additional main effects: {len(self.two_way_interaction_variables)}")
-            print(f"  - Interaction terms: {len(self.interaction_terms)}")
+            print(f"  - Main treatment effects: {n_main_treatment}")
+            print(f"  - 2-way interaction terms: {n_two_way}")
+            print(f"  - 3-way interaction terms: {n_three_way}")
             print(f"  - Total: {len(treatment_variables)}")
 
             # Create DoubleML data object
+            if progress_callback:
+                progress_callback(0.3, 1.0, f"Setting up DML model for {len(treatment_variables)} treatment variables...")
             obj_dml_data = dml.DoubleMLData(
                 processed_data,
                 y_col=self.outcome,
@@ -136,16 +137,22 @@ class DMLEstimatorDoubleML:
 
             # Fit the model (following Sample_Analysis.ipynb)
             print("Fitting DML model...")
+            if progress_callback:
+                progress_callback(0.4, 1.0, f"Fitting DML model with {n_splits} folds and 5 repetitions...")
             dml_plr.fit()
             print("Model fitted successfully!")
 
             # Get confidence intervals (following Sample_Analysis.ipynb)
             print("Computing confidence intervals...")
+            if progress_callback:
+                progress_callback(0.8, 1.0, "Computing confidence intervals...")
             conf_int_95 = dml_plr.confint(level=0.95)
             conf_int_99 = dml_plr.confint(level=0.99)
 
             # Get p-values (following Sample_Analysis.ipynb)
             print("Extracting p-values...")
+            if progress_callback:
+                progress_callback(0.9, 1.0, "Extracting p-values and preparing results...")
             pvals = dml_plr.pval
 
             # Extract all treatment effects (following Sample_Analysis.ipynb)
@@ -232,6 +239,13 @@ class DMLEstimatorDoubleML:
             print(f"Significant at p<0.01: {sum(1 for r in all_results if r['sig_1pct'])}")
             print("="*80)
 
+            # Categorize treatment variables for display
+            if progress_callback:
+                progress_callback(1.0, 1.0, "Analysis complete!")
+            main_treatment_vars = [tv for tv in treatment_variables if tv not in [t['name'] for t in self.interaction_terms]]
+            two_way_interaction_vars = [t['name'] for t in self.interaction_terms if t['order'] == 2]
+            three_way_interaction_vars = [t['name'] for t in self.interaction_terms if t['order'] == 3]
+
             results = {
                 'ate': main_ate,
                 'se': main_se,
@@ -245,7 +259,11 @@ class DMLEstimatorDoubleML:
                                      for t in self.interaction_terms],
                 'interaction_results': interaction_results,
                 'detailed_results_df': detailed_df,
-                'all_results': all_results  # Include all results for display
+                'all_results': all_results,  # Include all results for display
+                'main_treatment_vars': main_treatment_vars,
+                'two_way_interaction_vars': two_way_interaction_vars,
+                'three_way_interaction_vars': three_way_interaction_vars,
+                'treatment_variables': treatment_variables  # Full list in order
             }
 
             return results
