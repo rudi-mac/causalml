@@ -46,6 +46,7 @@ class DMLEstimatorDoubleML:
         self.interaction_variables = interaction_variables or []
         self.model = None
         self.interaction_terms = []
+        self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
 
     def estimate_ate(self, discrete_treatment=True, n_splits=5, alpha=0.05):
         """
@@ -64,24 +65,46 @@ class DMLEstimatorDoubleML:
             import doubleml as dml
             from scipy import stats
 
-            # Preprocess data
+            # Preprocess data (includes dummification of categorical variables)
             processed_data = self._preprocess_data()
 
             # Construct interaction terms
             processed_data = self._construct_interaction_terms(processed_data)
 
-            # Create list of all treatments: main treatment + two_way vars + all interactions
-            # Following Sample_Analysis.ipynb logic: include both main treatments
-            treatment_variables = [self.treatment]
+            # Create list of all treatments following Sample_Analysis.ipynb logic:
+            # After dummification, categorical variables become multiple columns
+            # Each dummy column is a separate treatment effect to estimate
+            treatment_variables = []
 
-            # Add two_way interaction variables as separate main effects (like Gender_Female in Sample_Analysis)
+            # Add main treatment variable(s)
+            # If treatment was categorical, it's now multiple dummy columns
+            if hasattr(self, 'categorical_mapping') and self.treatment in self.categorical_mapping:
+                # Treatment was categorical - add all dummy columns
+                for dummy_col in self.categorical_mapping[self.treatment]:
+                    if dummy_col in processed_data.columns:
+                        treatment_variables.append(dummy_col)
+                print(f"Treatment '{self.treatment}' was categorical, now {len([d for d in self.categorical_mapping[self.treatment] if d in processed_data.columns])} dummy columns")
+            elif self.treatment in processed_data.columns:
+                # Treatment is binary or continuous
+                treatment_variables.append(self.treatment)
+
+            # Add two_way interaction variables as separate main effects
+            # These are like Gender_Female in Sample_Analysis - also treated as main effects
             for var in self.two_way_interaction_variables:
-                if var in processed_data.columns and var not in treatment_variables:
+                # Check if this variable was dummified
+                if hasattr(self, 'categorical_mapping') and var in self.categorical_mapping:
+                    # Variable was categorical - add all its dummy columns
+                    for dummy_col in self.categorical_mapping[var]:
+                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
+                            treatment_variables.append(dummy_col)
+                elif var in processed_data.columns and var not in treatment_variables:
+                    # Variable is binary or continuous
                     treatment_variables.append(var)
 
             # Add interaction terms as additional treatments
             for term in self.interaction_terms:
-                treatment_variables.append(term['name'])
+                if term['name'] in processed_data.columns:
+                    treatment_variables.append(term['name'])
 
             print(f"Estimating effects for {len(treatment_variables)} treatments:")
             print(f"  - Main treatment: {self.treatment}")
@@ -111,64 +134,71 @@ class DMLEstimatorDoubleML:
                 n_rep=5  # 5 repetitions for cross-fitting
             )
 
-            # Fit the model
+            # Fit the model (following Sample_Analysis.ipynb)
             print("Fitting DML model...")
             dml_plr.fit()
+            print("Model fitted successfully!")
 
-            # Get bootstrap confidence intervals
-            print("Computing bootstrap confidence intervals...")
-            dml_plr.bootstrap(n_rep_boot=1000)
-            conf_int_df = dml_plr.confint(joint=True, level=1-alpha)
+            # Get confidence intervals (following Sample_Analysis.ipynb)
+            print("Computing confidence intervals...")
+            conf_int_95 = dml_plr.confint(level=0.95)
+            conf_int_99 = dml_plr.confint(level=0.99)
 
-            # Get adjusted p-values
-            print("Computing adjusted p-values...")
-            p_val_df = dml_plr.p_adjust()
+            # Get p-values (following Sample_Analysis.ipynb)
+            print("Extracting p-values...")
+            pvals = dml_plr.pval
 
-            # Perform sensitivity analysis
-            print("Performing sensitivity analysis...")
-            try:
-                dml_plr.sensitivity_analysis()
-                sensitivity_df = pd.DataFrame({
-                    'rv_percent': dml_plr.sensitivity_params['rv'] * 100
-                }, index=treatment_variables)
-            except Exception as e:
-                print(f"Sensitivity analysis failed: {e}")
-                sensitivity_df = pd.DataFrame({
-                    'rv_percent': [0.0] * len(treatment_variables)
-                }, index=treatment_variables)
-
-            # Extract all treatment effects
+            # Extract all treatment effects (following Sample_Analysis.ipynb)
             all_results = []
             for idx, treat_var in enumerate(treatment_variables):
+                # Determine if this is a main effect or interaction
+                is_interaction = treat_var in [t['name'] for t in self.interaction_terms]
+
+                if is_interaction:
+                    term_info = next((t for t in self.interaction_terms if t['name'] == treat_var), None)
+                    variables = term_info['variables'] if term_info else [treat_var]
+                    order = term_info['order'] if term_info else 1
+                else:
+                    variables = [treat_var]
+                    order = 1
+
                 result = {
                     'term': treat_var,
-                    'variables': [treat_var] if idx < (1 + len(self.two_way_interaction_variables)) else
-                                 next((t['variables'] for t in self.interaction_terms if t['name'] == treat_var), [treat_var]),
-                    'order': 1 if idx < (1 + len(self.two_way_interaction_variables)) else
-                            next((t['order'] for t in self.interaction_terms if t['name'] == treat_var), 1),
+                    'variables': variables,
+                    'order': order,
                     'coefficient': float(dml_plr.coef[idx]),
                     'se': float(dml_plr.se[idx]),
                     't_statistic': float(dml_plr.coef[idx] / dml_plr.se[idx]),
-                    'ci_lower': float(conf_int_df.iloc[idx, 0]),
-                    'ci_upper': float(conf_int_df.iloc[idx, 1]),
-                    'p_value': float(p_val_df.iloc[idx, 1]),
-                    'significant': p_val_df.iloc[idx, 1] < alpha,
-                    'sig_1pct': p_val_df.iloc[idx, 1] < 0.01,
-                    'sig_5pct': p_val_df.iloc[idx, 1] < 0.05,
-                    'sig_10pct': p_val_df.iloc[idx, 1] < 0.10,
-                    'rv_percent': float(sensitivity_df.iloc[idx, 0]) if len(sensitivity_df) > idx else 0.0
+                    'ci_lower_95': float(conf_int_95.iloc[idx, 0]),
+                    'ci_upper_95': float(conf_int_95.iloc[idx, 1]),
+                    'ci_lower_99': float(conf_int_99.iloc[idx, 0]),
+                    'ci_upper_99': float(conf_int_99.iloc[idx, 1]),
+                    'p_value': float(pvals[idx]),
+                    'significant': pvals[idx] < alpha,
+                    'sig_1pct': pvals[idx] < 0.01,
+                    'sig_5pct': pvals[idx] < 0.05,
+                    'sig_10pct': pvals[idx] < 0.10
                 }
                 all_results.append(result)
 
             # Sort by p-value (like Sample_Analysis.ipynb)
             all_results.sort(key=lambda x: x['p_value'])
 
-            # Extract main treatment effect (first one)
-            main_ate = float(dml_plr.coef[0])
-            main_se = float(dml_plr.se[0])
-            main_ci_lower = float(conf_int_df.iloc[0, 0])
-            main_ci_upper = float(conf_int_df.iloc[0, 1])
-            main_p_value = float(p_val_df.iloc[0, 1])
+            # Extract main treatment effect (first treatment variable in the original list, not sorted)
+            # Find the first occurrence of the original treatment in treatment_variables
+            main_idx = 0  # Default to first
+            for i, tv in enumerate(treatment_variables):
+                if tv == self.treatment or (hasattr(self, 'categorical_mapping') and
+                                           self.treatment in self.categorical_mapping and
+                                           tv in self.categorical_mapping.get(self.treatment, [])):
+                    main_idx = i
+                    break
+
+            main_ate = float(dml_plr.coef[main_idx])
+            main_se = float(dml_plr.se[main_idx])
+            main_ci_lower = float(conf_int_95.iloc[main_idx, 0])
+            main_ci_upper = float(conf_int_95.iloc[main_idx, 1])
+            main_p_value = float(pvals[main_idx])
 
             # Separate interaction results from main effects
             interaction_results = [r for r in all_results if r['order'] >= 2]
@@ -183,14 +213,24 @@ class DMLEstimatorDoubleML:
                 'std_error': [r['se'] for r in all_results],
                 't_statistic': [r['t_statistic'] for r in all_results],
                 'p_value': [r['p_value'] for r in all_results],
-                'ci_lower_95': [r['ci_lower'] for r in all_results],
-                'ci_upper_95': [r['ci_upper'] for r in all_results],
+                'ci_lower_95': [r['ci_lower_95'] for r in all_results],
+                'ci_upper_95': [r['ci_upper_95'] for r in all_results],
+                'ci_lower_99': [r['ci_lower_99'] for r in all_results],
+                'ci_upper_99': [r['ci_upper_99'] for r in all_results],
                 'sig_1pct': [r['sig_1pct'] for r in all_results],
                 'sig_5pct': [r['sig_5pct'] for r in all_results],
                 'sig_10pct': [r['sig_10pct'] for r in all_results]
             })
 
             # Already sorted by p-value
+
+            print("\n" + "="*80)
+            print("DML ESTIMATION COMPLETE")
+            print("="*80)
+            print(f"Total treatments estimated: {len(treatment_variables)}")
+            print(f"Significant at p<0.05: {sum(1 for r in all_results if r['sig_5pct'])}")
+            print(f"Significant at p<0.01: {sum(1 for r in all_results if r['sig_1pct'])}")
+            print("="*80)
 
             results = {
                 'ate': main_ate,
@@ -204,7 +244,8 @@ class DMLEstimatorDoubleML:
                 'interaction_terms': [{'name': t['name'], 'variables': t['variables'], 'order': t['order']}
                                      for t in self.interaction_terms],
                 'interaction_results': interaction_results,
-                'detailed_results_df': detailed_df
+                'detailed_results_df': detailed_df,
+                'all_results': all_results  # Include all results for display
             }
 
             return results
@@ -388,31 +429,64 @@ class DMLEstimatorDoubleML:
     def _preprocess_data(self):
         """
         Preprocess data based on variable types
+        Following Sample_Analysis.ipynb logic:
+        - Dummify categorical variables using pd.get_dummies
+        - Drop one category per group to avoid dummy trap
+        - Keep binary and continuous variables as-is
 
         Returns:
-            pd.DataFrame: Preprocessed data
+            pd.DataFrame: Preprocessed data with dummified categorical variables
         """
         processed = self.data.copy()
 
         # Handle missing values
         processed = processed.dropna(subset=[self.treatment, self.outcome])
 
-        # Encode categorical variables
+        # Track which columns to drop (one per category to avoid dummy trap)
+        columns_to_drop = []
+
+        # Store mapping of original categorical variable to its dummified columns
+        self.categorical_mapping = {}
+
+        # Process each variable based on its type
         for col, dtype in self.column_types.items():
             if col not in processed.columns:
                 continue
 
-            if dtype in ['binary', 'categorical', 'ordinal']:
-                # Label encoding
-                le = LabelEncoder()
-                # Handle any remaining NaN
-                mask = processed[col].notna()
-                if mask.any():
-                    processed.loc[mask, col] = le.fit_transform(
-                        processed.loc[mask, col].astype(str)
-                    )
+            if dtype in ['categorical', 'ordinal']:
+                # Dummify categorical/ordinal variables
+                print(f"Dummifying categorical variable: {col}")
+                dummies = pd.get_dummies(processed[col], prefix=col, dtype=int)
 
-        # Convert to numeric
+                # Store the mapping
+                self.categorical_mapping[col] = list(dummies.columns)
+
+                # Add dummies to processed data
+                processed = pd.concat([processed, dummies], axis=1)
+
+                # Drop one category to avoid dummy trap (drop first category)
+                first_dummy = dummies.columns[0]
+                columns_to_drop.append(first_dummy)
+                print(f"  Created {len(dummies.columns)} dummy columns, will drop {first_dummy} to avoid dummy trap")
+
+                # Remove original categorical column
+                processed = processed.drop(col, axis=1)
+
+            elif dtype == 'binary':
+                # Keep binary variables as-is, just ensure they're numeric
+                processed[col] = pd.to_numeric(processed[col], errors='coerce')
+            else:
+                # Continuous variables - keep as-is
+                processed[col] = pd.to_numeric(processed[col], errors='coerce')
+
+        # Drop one category per group to avoid dummy trap
+        if columns_to_drop:
+            print(f"\nDropping {len(columns_to_drop)} columns to avoid dummy trap:")
+            for col in columns_to_drop:
+                print(f"  - {col}")
+            processed = processed.drop(columns_to_drop, axis=1, errors='ignore')
+
+        # Convert all remaining columns to numeric
         for col in processed.columns:
             try:
                 processed[col] = pd.to_numeric(processed[col], errors='coerce')
@@ -420,7 +494,14 @@ class DMLEstimatorDoubleML:
                 pass
 
         # Drop any remaining NaN
+        initial_rows = len(processed)
         processed = processed.dropna()
+        final_rows = len(processed)
+        if initial_rows != final_rows:
+            print(f"\nDropped {initial_rows - final_rows} rows due to missing values")
+
+        print(f"\nFinal preprocessed data shape: {processed.shape}")
+        print(f"Columns: {list(processed.columns)}")
 
         return processed
 
