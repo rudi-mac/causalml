@@ -354,7 +354,24 @@ class DMLEstimatorDoubleML:
         # This gets ALL columns except outcome (includes treatment)
         unique_values = [col for col in data.columns if col != self.outcome]
         print(f"\nStep 1: Created unique_values list (all columns except outcome): {len(unique_values)} variables")
-        print(f"unique_values = {unique_values[:10]}{'...' if len(unique_values) > 10 else ''}")
+        print(f"unique_values sample (first 10): {unique_values[:10]}")
+
+        # Show prefix distribution to help understand the filtering
+        prefix_counts = {}
+        for col in unique_values:
+            prefix = col[:6]
+            prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+
+        prefixes_with_multiple = {k: v for k, v in prefix_counts.items() if v > 1}
+        print(f"\nPrefix analysis (prefixes with multiple columns):")
+        print(f"Total unique prefixes: {len(prefix_counts)}")
+        print(f"Prefixes with 2+ columns (will have blocked interactions): {len(prefixes_with_multiple)}")
+        if prefixes_with_multiple:
+            for prefix, count in sorted(prefixes_with_multiple.items(), key=lambda x: x[1], reverse=True)[:10]:
+                print(f"  '{prefix}': {count} columns")
+        else:
+            print("  WARNING: No prefixes with multiple columns found!")
+            print("  This means NO interactions will be blocked (all variables treated as different categories)")
 
         # ========================================
         # STEP 2: Generate ALL 2-way combinations (Sample_Analysis.ipynb cell 35)
@@ -370,6 +387,9 @@ class DMLEstimatorDoubleML:
         # But Ethnic_Asian:Region_South SHOULD be created (different prefixes)
         interaction_terms_2way = []
         two_way_dict = {}
+        blocked_2way = 0
+        blocked_2way_examples = []
+
         for combi in all_combinations_2w:
             # Extract category prefix (first 6 characters) to identify which categorical variable
             # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
@@ -382,8 +402,18 @@ class DMLEstimatorDoubleML:
                 column_name = f"{combi[0]}:{combi[1]}"
                 two_way_dict[column_name] = data[combi[0]] * data[combi[1]]
                 interaction_terms_2way.append(column_name)
+            else:
+                # Track blocked interactions for diagnostics
+                blocked_2way += 1
+                if len(blocked_2way_examples) < 10:
+                    blocked_2way_examples.append(f"{combi[0]}:{combi[1]} (both start with '{prefix1}')")
 
         print(f"2-way interactions created (after filtering): {len(interaction_terms_2way)}")
+        print(f"2-way interactions BLOCKED (same category): {blocked_2way}")
+        if blocked_2way_examples:
+            print(f"Examples of blocked 2-way interactions:")
+            for ex in blocked_2way_examples:
+                print(f"  ❌ {ex}")
 
         # ========================================
         # STEP 3: Generate ALL 3-way combinations (Sample_Analysis.ipynb cell 37)
@@ -399,6 +429,9 @@ class DMLEstimatorDoubleML:
         # But Ethnic_Asian:Ethnic_Black:Region_South should NOT (two "Ethnic" columns)
         interaction_terms_3way = []
         three_way_dict = {}
+        blocked_3way = 0
+        blocked_3way_examples = []
+
         for combi in all_combinations_3w:
             # Extract category prefixes (first 6 characters) to identify which categorical variable
             # each dummy column belongs to (e.g., "Ethnic", "Region", "Father", "Mother", "Wealth")
@@ -413,15 +446,35 @@ class DMLEstimatorDoubleML:
                 column_name = f"{combi[0]}:{combi[1]}:{combi[2]}"
                 three_way_dict[column_name] = data[combi[0]] * data[combi[1]] * data[combi[2]]
                 interaction_terms_3way.append(column_name)
+            else:
+                # Track blocked interactions for diagnostics
+                blocked_3way += 1
+                if len(blocked_3way_examples) < 10:
+                    blocked_3way_examples.append(f"{combi[0]}:{combi[1]}:{combi[2]} (prefixes: {prefix1}, {prefix2}, {prefix3})")
 
         print(f"3-way interactions created (after filtering): {len(interaction_terms_3way)}")
+        print(f"3-way interactions BLOCKED (at least 2 from same category): {blocked_3way}")
+        if blocked_3way_examples:
+            print(f"Examples of blocked 3-way interactions:")
+            for ex in blocked_3way_examples:
+                print(f"  ❌ {ex}")
 
         # Concatenate all interaction columns at once to avoid fragmentation warning
         print("\n[COMBINING] Concatenating all interaction columns to avoid DataFrame fragmentation...")
         two_way_df = pd.DataFrame(two_way_dict)
         three_way_df = pd.DataFrame(three_way_dict)
         result_data = pd.concat([data, two_way_df, three_way_df], axis=1).copy()
-        print(f"Combined data shape: {result_data.shape}")
+
+        print("\n" + "="*80)
+        print("DATAFRAME COMPOSITION SUMMARY")
+        print("="*80)
+        print(f"Original variables:              {data.shape[1]:>8,} columns")
+        print(f"2-way interactions (filtered):   {len(two_way_df.columns):>8,} columns")
+        print(f"3-way interactions (filtered):   {len(three_way_df.columns):>8,} columns")
+        print(f"{'-'*80}")
+        print(f"TOTAL COLUMNS IN DATAFRAME:      {result_data.shape[1]:>8,} columns")
+        print(f"TOTAL ROWS:                      {result_data.shape[0]:>8,} rows")
+        print("="*80)
 
         # ========================================
         # STEP 4: Construct treatment interaction terms based on user input
