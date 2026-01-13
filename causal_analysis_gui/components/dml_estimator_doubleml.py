@@ -21,7 +21,7 @@ class DMLEstimatorDoubleML:
 
     def __init__(self, data, dag, treatment, outcome, column_types,
                  two_way_interaction_variables=None, three_way_interaction_variables=None,
-                 interaction_variables=None):
+                 interaction_variables=None, categorical_drop_values=None):
         """
         Initialize DML estimator
 
@@ -34,6 +34,7 @@ class DMLEstimatorDoubleML:
             two_way_interaction_variables (list): Variables for two-way interactions with treatment
             three_way_interaction_variables (list): Variables for three-way interactions
             interaction_variables (list): DEPRECATED - Use two_way and three_way instead
+            categorical_drop_values (dict): Dict mapping categorical variable names to values to drop (reference categories)
         """
         self.data = data.copy()
         self.dag = dag
@@ -44,6 +45,7 @@ class DMLEstimatorDoubleML:
         self.three_way_interaction_variables = three_way_interaction_variables or []
         # Legacy support
         self.interaction_variables = interaction_variables or []
+        self.categorical_drop_values = categorical_drop_values or {}
         self.model = None
         self.interaction_terms = []
         self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
@@ -521,7 +523,7 @@ class DMLEstimatorDoubleML:
         Preprocess data based on variable types
         Following Sample_Analysis.ipynb logic:
         - Dummify categorical variables using pd.get_dummies
-        - Drop one category per group to avoid dummy trap
+        - Drop user-selected category per group to avoid dummy trap
         - Keep binary and continuous variables as-is
 
         Returns:
@@ -554,10 +556,25 @@ class DMLEstimatorDoubleML:
                 # Add dummies to processed data
                 processed = pd.concat([processed, dummies], axis=1)
 
-                # Drop one category to avoid dummy trap (drop first category)
-                first_dummy = dummies.columns[0]
-                columns_to_drop.append(first_dummy)
-                print(f"  Created {len(dummies.columns)} dummy columns, will drop {first_dummy} to avoid dummy trap")
+                # Drop user-selected category to avoid dummy trap
+                # If user hasn't specified, default to first category
+                if col in self.categorical_drop_values:
+                    # User specified which value to drop
+                    drop_value = self.categorical_drop_values[col]
+                    drop_column = f"{col}_{drop_value}"
+                    if drop_column in dummies.columns:
+                        columns_to_drop.append(drop_column)
+                        print(f"  Created {len(dummies.columns)} dummy columns, will drop user-selected '{drop_column}' to avoid dummy trap")
+                    else:
+                        # Fallback if the column name doesn't match (shouldn't happen)
+                        first_dummy = dummies.columns[0]
+                        columns_to_drop.append(first_dummy)
+                        print(f"  WARNING: Could not find '{drop_column}', dropping first category '{first_dummy}' instead")
+                else:
+                    # Default behavior: drop first category
+                    first_dummy = dummies.columns[0]
+                    columns_to_drop.append(first_dummy)
+                    print(f"  Created {len(dummies.columns)} dummy columns, will drop first category '{first_dummy}' to avoid dummy trap")
 
                 # Remove original categorical column
                 processed = processed.drop(col, axis=1)

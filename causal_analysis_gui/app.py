@@ -45,6 +45,10 @@ if 'three_way_interaction_variables' not in st.session_state:
     st.session_state.three_way_interaction_variables = []
 if 'results' not in st.session_state:
     st.session_state.results = None
+if 'categorical_drop_values' not in st.session_state:
+    st.session_state.categorical_drop_values = {}  # Dict of categorical_var: value_to_drop
+if 'categorical_drop_confirmed' not in st.session_state:
+    st.session_state.categorical_drop_confirmed = False
 
 def main():
     """Main application flow"""
@@ -862,6 +866,92 @@ def step_4_run_analysis():
         st.warning("⚠️ Please upload data (Step 2)")
         return
 
+    # Identify categorical variables (including ordinal)
+    categorical_vars = {var: dtype for var, dtype in st.session_state.column_types.items()
+                       if dtype in ['categorical', 'ordinal'] and var in st.session_state.data.columns}
+
+    # Step 4a: Ask user which value to drop for each categorical variable
+    if categorical_vars and not st.session_state.categorical_drop_confirmed:
+        st.markdown("### 📋 Step 4a: Select Reference Categories")
+        st.markdown("""
+        Before constructing interaction terms, you need to specify which category value to drop
+        (reference category) for each categorical variable to avoid the **dummy variable trap**.
+
+        The reference category will be the baseline against which other categories are compared.
+        """)
+
+        st.info("""
+        **Important:** Dropping one category per categorical variable is necessary to:
+        - Avoid perfect multicollinearity (dummy variable trap)
+        - Properly identify interaction effects between different categorical variables
+        - Ensure the model is mathematically identifiable
+        """)
+
+        with st.form("categorical_drop_form"):
+            st.markdown("#### Select which category value to drop for each categorical variable:")
+
+            # Create selection for each categorical variable
+            drop_selections = {}
+            for var_name, var_type in categorical_vars.items():
+                st.markdown(f"**{var_name}** ({var_type})")
+
+                # Get unique values from the data
+                unique_values = sorted(st.session_state.data[var_name].dropna().unique())
+
+                # Use existing selection if available, otherwise default to first value
+                default_idx = 0
+                if var_name in st.session_state.categorical_drop_values:
+                    try:
+                        default_idx = unique_values.index(st.session_state.categorical_drop_values[var_name])
+                    except ValueError:
+                        default_idx = 0
+
+                selected_value = st.selectbox(
+                    f"Drop this value from {var_name}:",
+                    options=unique_values,
+                    index=default_idx,
+                    key=f"drop_{var_name}",
+                    help=f"Select the reference category for {var_name}. This category will be omitted from the model."
+                )
+
+                drop_selections[var_name] = selected_value
+
+                # Show info about how many categories will remain
+                st.caption(f"  → Will create {len(unique_values) - 1} dummy variables (dropping '{selected_value}')")
+
+            st.markdown("---")
+            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", use_container_width=True)
+
+            if submitted:
+                # Store selections in session state
+                st.session_state.categorical_drop_values = drop_selections
+                st.session_state.categorical_drop_confirmed = True
+                st.success("✅ Reference categories confirmed! Proceeding with interaction construction...")
+                st.rerun()
+
+        # Show back button
+        if st.button("⬅️ Back to Interactions", use_container_width=True):
+            st.session_state.step = 3
+            st.rerun()
+
+        return  # Don't show the rest of Step 4 until user confirms
+
+    # If no categorical variables, automatically confirm
+    if not categorical_vars:
+        st.session_state.categorical_drop_confirmed = True
+
+    # Show a summary of the selected drop values if they exist
+    if categorical_vars and st.session_state.categorical_drop_values:
+        with st.expander("📋 Selected Reference Categories", expanded=False):
+            st.markdown("The following category values will be dropped (used as reference):")
+            for var, val in st.session_state.categorical_drop_values.items():
+                st.markdown(f"- **{var}**: dropping `{val}`")
+
+            # Add button to change selections
+            if st.button("🔄 Change Reference Categories"):
+                st.session_state.categorical_drop_confirmed = False
+                st.rerun()
+
     st.markdown("""
     Ready to estimate the causal effect! The analysis will:
     1. Identify confounders from the DAG
@@ -903,7 +993,8 @@ def step_4_run_analysis():
             outcome=st.session_state.outcome,
             column_types=st.session_state.column_types,
             two_way_interaction_variables=st.session_state.two_way_interaction_variables,
-            three_way_interaction_variables=st.session_state.three_way_interaction_variables
+            three_way_interaction_variables=st.session_state.three_way_interaction_variables,
+            categorical_drop_values=st.session_state.categorical_drop_values
         )
 
         # Preprocess data to get the final dataframe shape
@@ -1017,7 +1108,8 @@ def step_4_run_analysis():
                 outcome=st.session_state.outcome,
                 column_types=st.session_state.column_types,
                 two_way_interaction_variables=st.session_state.two_way_interaction_variables,
-                three_way_interaction_variables=st.session_state.three_way_interaction_variables
+                three_way_interaction_variables=st.session_state.three_way_interaction_variables,
+                categorical_drop_values=st.session_state.categorical_drop_values
             )
 
             results = estimator.estimate_ate(
