@@ -354,16 +354,34 @@ class DAGEditor:
         }
         """)
 
+        # Identify mediators: nodes that have incoming edges from treatment or covariates
+        # AND outgoing edges to outcome
+        mediators = set()
+        if treatment and outcome:
+            for node in dag.nodes():
+                if node != treatment and node != outcome:
+                    # Check if node has incoming edge from treatment or any other node (covariate)
+                    has_incoming = len(list(dag.predecessors(node))) > 0
+                    # Check if node has outgoing edge to outcome
+                    has_outgoing_to_outcome = outcome in dag.successors(node)
+
+                    if has_incoming and has_outgoing_to_outcome:
+                        mediators.add(node)
+
         # Add nodes with colors based on role
         for node in dag.nodes():
             if node == treatment:
-                color = '#90EE90'  # Light green for treatment
+                color = '#FFA500'  # Orange for treatment
                 title = f"{node} (Treatment)"
                 size = 35
             elif node == outcome:
-                color = '#FFB6C1'  # Light pink for outcome
+                color = '#90EE90'  # Green for outcome
                 title = f"{node} (Outcome)"
                 size = 35
+            elif node in mediators:
+                color = '#FF6B6B'  # Red for mediators
+                title = f"{node} (Mediator)"
+                size = 32
             else:
                 color = '#ADD8E6'  # Light blue for covariates
                 title = f"{node} (Covariate)"
@@ -378,15 +396,45 @@ class DAGEditor:
                 font={'size': 16}
             )
 
-        # Add edges
+        # Add edges with special highlighting for treatment-to-outcome edge
         for edge in dag.edges():
-            net.add_edge(edge[0], edge[1])
+            if edge[0] == treatment and edge[1] == outcome:
+                # Make treatment-to-outcome edge more prominent
+                net.add_edge(edge[0], edge[1], width=4, color='#FF6B6B')
+            else:
+                net.add_edge(edge[0], edge[1])
 
         # Generate HTML
         html = net.generate_html()
 
         # Display in Streamlit
         components.html(html, height=650, scrolling=False)
+
+        # Add legend explaining the color coding
+        st.markdown("#### Legend")
+        legend_html = """
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; margin-top: 10px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: center;">
+                <div style="display: flex; align-items: center;">
+                    <div style="width: 20px; height: 20px; background-color: #FFA500; border-radius: 50%; margin-right: 8px;"></div>
+                    <span><strong>Treatment</strong></span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div style="width: 20px; height: 20px; background-color: #90EE90; border-radius: 50%; margin-right: 8px;"></div>
+                    <span><strong>Outcome</strong></span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div style="width: 20px; height: 20px; background-color: #FF6B6B; border-radius: 50%; margin-right: 8px;"></div>
+                    <span><strong>Mediator</strong> (has incoming edges and outgoing edge to outcome)</span>
+                </div>
+                <div style="display: flex; align-items: center;">
+                    <div style="width: 20px; height: 20px; background-color: #ADD8E6; border-radius: 50%; margin-right: 8px;"></div>
+                    <span><strong>Covariate</strong></span>
+                </div>
+            </div>
+        </div>
+        """
+        st.markdown(legend_html, unsafe_allow_html=True)
 
     def _visualize_dag_matplotlib(self, dag):
         """
