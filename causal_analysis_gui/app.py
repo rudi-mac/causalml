@@ -1142,58 +1142,6 @@ def step_4_run_analysis():
         results = st.session_state.results
 
         st.markdown("---")
-
-        # Display treatment variables breakdown
-        st.markdown("### 📋 Treatment Variables Estimated")
-        st.markdown("""
-        The following treatment effects were estimated by the DML model.
-        Each variable represents a separate causal effect on the outcome.
-        """)
-
-        # Get categorized treatment variables from results
-        main_treatment_vars = results.get('main_treatment_vars', [])
-        two_way_vars = results.get('two_way_interaction_vars', [])
-        three_way_vars = results.get('three_way_interaction_vars', [])
-
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Variables", len(main_treatment_vars) + len(two_way_vars) + len(three_way_vars))
-        with col2:
-            st.metric("Main Treatment", len(main_treatment_vars))
-        with col3:
-            st.metric("2-way Interactions", len(two_way_vars))
-        with col4:
-            st.metric("3-way Interactions", len(three_way_vars))
-
-        # Display organized list
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("#### Main Treatment Effect")
-            if main_treatment_vars:
-                for var in main_treatment_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col2:
-            st.markdown("#### 2-way Interaction(s)")
-            if two_way_vars:
-                for var in two_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col3:
-            st.markdown("#### 3-way Interactions")
-            if three_way_vars:
-                for var in three_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        st.markdown("---")
         st.markdown("### 📊 DML Estimation Results")
         st.markdown("""
         Comprehensive results table showing all treatment effects.
