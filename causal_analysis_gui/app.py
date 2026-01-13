@@ -49,6 +49,8 @@ if 'categorical_drop_values' not in st.session_state:
     st.session_state.categorical_drop_values = {}  # Dict of categorical_var: value_to_drop
 if 'categorical_drop_confirmed' not in st.session_state:
     st.session_state.categorical_drop_confirmed = False
+if 'mediators' not in st.session_state:
+    st.session_state.mediators = set()  # Set of mediator variables (on causal path, excluded from interactions)
 
 def main():
     """Main application flow"""
@@ -706,6 +708,9 @@ def step_3_specify_interactions():
         if has_incoming and has_outgoing_to_outcome:
             mediators.add(node)
 
+    # Store mediators in session state for use in DML estimator
+    st.session_state.mediators = mediators
+
     # Remove mediators from available variables
     all_variables = [v for v in all_variables if v not in mediators]
 
@@ -994,7 +999,8 @@ def step_4_run_analysis():
             column_types=st.session_state.column_types,
             two_way_interaction_variables=st.session_state.two_way_interaction_variables,
             three_way_interaction_variables=st.session_state.three_way_interaction_variables,
-            categorical_drop_values=st.session_state.categorical_drop_values
+            categorical_drop_values=st.session_state.categorical_drop_values,
+            mediators=st.session_state.mediators
         )
 
         # Preprocess data to get the final dataframe shape
@@ -1109,7 +1115,8 @@ def step_4_run_analysis():
                 column_types=st.session_state.column_types,
                 two_way_interaction_variables=st.session_state.two_way_interaction_variables,
                 three_way_interaction_variables=st.session_state.three_way_interaction_variables,
-                categorical_drop_values=st.session_state.categorical_drop_values
+                categorical_drop_values=st.session_state.categorical_drop_values,
+                mediators=st.session_state.mediators
             )
 
             results = estimator.estimate_ate(
@@ -1133,58 +1140,6 @@ def step_4_run_analysis():
     # Display results directly if available (following Sample_Analysis.ipynb)
     if st.session_state.results is not None:
         results = st.session_state.results
-
-        st.markdown("---")
-
-        # Display treatment variables breakdown
-        st.markdown("### 📋 Treatment Variables Estimated")
-        st.markdown("""
-        The following treatment effects were estimated by the DML model.
-        Each variable represents a separate causal effect on the outcome.
-        """)
-
-        # Get categorized treatment variables from results
-        main_treatment_vars = results.get('main_treatment_vars', [])
-        two_way_vars = results.get('two_way_interaction_vars', [])
-        three_way_vars = results.get('three_way_interaction_vars', [])
-
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Variables", len(main_treatment_vars) + len(two_way_vars) + len(three_way_vars))
-        with col2:
-            st.metric("Main Treatment", len(main_treatment_vars))
-        with col3:
-            st.metric("2-way Interactions", len(two_way_vars))
-        with col4:
-            st.metric("3-way Interactions", len(three_way_vars))
-
-        # Display organized list
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("#### Main Treatment Effect")
-            if main_treatment_vars:
-                for var in main_treatment_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col2:
-            st.markdown("#### 2-way Interaction(s)")
-            if two_way_vars:
-                for var in two_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
-
-        with col3:
-            st.markdown("#### 3-way Interactions")
-            if three_way_vars:
-                for var in three_way_vars:
-                    st.markdown(f"- `{var}`")
-            else:
-                st.markdown("*None*")
 
         st.markdown("---")
         st.markdown("### 📊 DML Estimation Results")
