@@ -955,10 +955,10 @@ def step_5_view_results():
     # Display comprehensive results dataframe
     if results.get('detailed_results_df') is not None:
         st.markdown("---")
-        st.markdown("### 📊 Comprehensive Results (Sorted by p-value)")
+        st.markdown("### 📊 Comprehensive Results Table")
         st.markdown("""
         All treatment effects including main effect and interaction terms.
-        Results are sorted by statistical significance (p-value).
+        Click column headers to sort. Use filters below to refine the view.
         """)
 
         detailed_df = results['detailed_results_df']
@@ -979,19 +979,58 @@ def step_5_view_results():
         with col4:
             st.metric("Sig. at 10%", sig_10pct)
 
+        # Add filtering options
+        st.markdown("#### Filters")
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+
+        with filter_col1:
+            significance_filter = st.selectbox(
+                "Significance Level",
+                options=["All", "p < 0.01", "p < 0.05", "p < 0.10", "Not Significant"],
+                index=0
+            )
+
+        with filter_col2:
+            sort_column = st.selectbox(
+                "Sort By",
+                options=["p_value", "coefficient", "std_error", "t_statistic", "treatment"],
+                index=0
+            )
+
+        with filter_col3:
+            sort_order = st.radio(
+                "Sort Order",
+                options=["Ascending", "Descending"],
+                index=0 if sort_column == "p_value" else 1,
+                horizontal=True
+            )
+
+        # Apply filters
+        filtered_df = detailed_df.copy()
+
+        if significance_filter == "p < 0.01":
+            filtered_df = filtered_df[filtered_df['sig_1pct']]
+        elif significance_filter == "p < 0.05":
+            filtered_df = filtered_df[filtered_df['sig_5pct']]
+        elif significance_filter == "p < 0.10":
+            filtered_df = filtered_df[filtered_df['sig_10pct']]
+        elif significance_filter == "Not Significant":
+            filtered_df = filtered_df[~filtered_df['sig_10pct']]
+
+        # Apply sorting
+        ascending = (sort_order == "Ascending")
+        filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
+
+        # Reset index for display
+        filtered_df = filtered_df.reset_index(drop=True)
+
         # Display the detailed dataframe
-        st.markdown("#### Detailed Results Table")
+        st.markdown(f"#### Results Table ({len(filtered_df)} of {len(detailed_df)} rows)")
 
-        # Format the dataframe for better display
-        display_df = detailed_df.copy()
-        display_df['coefficient'] = display_df['coefficient'].apply(lambda x: f"{x:.6f}")
-        display_df['std_error'] = display_df['std_error'].apply(lambda x: f"{x:.6f}")
-        display_df['t_statistic'] = display_df['t_statistic'].apply(lambda x: f"{x:.4f}")
-        display_df['p_value'] = display_df['p_value'].apply(lambda x: f"{x:.6f}")
-        display_df['ci_lower_95'] = display_df['ci_lower_95'].apply(lambda x: f"{x:.6f}")
-        display_df['ci_upper_95'] = display_df['ci_upper_95'].apply(lambda x: f"{x:.6f}")
+        # Create a formatted display dataframe
+        display_df = filtered_df.copy()
 
-        # Add significance stars
+        # Add significance stars column first
         def add_stars(row):
             if row['sig_1pct']:
                 return '***'
@@ -1002,11 +1041,58 @@ def step_5_view_results():
             else:
                 return ''
 
-        display_df['significance'] = detailed_df.apply(add_stars, axis=1)
+        display_df.insert(0, 'sig', filtered_df.apply(add_stars, axis=1))
 
-        st.dataframe(display_df, use_container_width=True, height=400)
+        # Reorder columns for better readability
+        column_order = ['sig', 'treatment', 'coefficient', 'std_error', 't_statistic', 'p_value',
+                       'ci_lower_95', 'ci_upper_95', 'sig_1pct', 'sig_5pct', 'sig_10pct']
+        display_df = display_df[column_order]
+
+        # Rename columns for better display
+        display_df = display_df.rename(columns={
+            'sig': 'Sig.',
+            'treatment': 'Treatment',
+            'coefficient': 'Coefficient',
+            'std_error': 'Std Error',
+            't_statistic': 't-Statistic',
+            'p_value': 'P-Value',
+            'ci_lower_95': 'CI Lower (95%)',
+            'ci_upper_95': 'CI Upper (95%)',
+            'sig_1pct': 'p<0.01',
+            'sig_5pct': 'p<0.05',
+            'sig_10pct': 'p<0.10'
+        })
+
+        # Display with interactive dataframe
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=500,
+            column_config={
+                "Sig.": st.column_config.TextColumn(width="small"),
+                "Treatment": st.column_config.TextColumn(width="large"),
+                "Coefficient": st.column_config.NumberColumn(format="%.6f"),
+                "Std Error": st.column_config.NumberColumn(format="%.6f"),
+                "t-Statistic": st.column_config.NumberColumn(format="%.4f"),
+                "P-Value": st.column_config.NumberColumn(format="%.6f"),
+                "CI Lower (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "CI Upper (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "p<0.01": st.column_config.CheckboxColumn(),
+                "p<0.05": st.column_config.CheckboxColumn(),
+                "p<0.10": st.column_config.CheckboxColumn()
+            }
+        )
 
         st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
+
+        # Add download button for filtered results
+        csv_data = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Results (CSV)",
+            data=csv_data,
+            file_name="dml_results_filtered.csv",
+            mime="text/csv"
+        )
 
     # Display interaction term results prominently
     if results.get('interaction_results') and len(results['interaction_results']) > 0:

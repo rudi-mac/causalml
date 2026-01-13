@@ -308,42 +308,70 @@ class DMLEstimatorDoubleML:
 
         # Now identify which interactions to treat as "treatments of interest"
         # Based on Sample_Analysis.ipynb: treatment, treatment:var, treatment:var1:var2
+        # Use flexible regex pattern matching like in the notebook
 
-        # Pattern matching for treatment variables
-        # Format: treatment:X or treatment:X:Y where X and Y are in user-selected variables
-        treatment_pattern_2way = re.compile(
-            f"^{re.escape(self.treatment)}:(.+)$"
-        )
-        treatment_pattern_3way = re.compile(
-            f"^{re.escape(self.treatment)}:(.+):(.+)$"
-        )
+        # Create regex pattern for treatment (flexible position)
+        treatment_pattern = re.compile(f".*{re.escape(self.treatment)}.*", re.IGNORECASE)
 
         # Find matching 2-way interactions
+        # Logic: Find all 2-way interactions that contain BOTH treatment AND a two_way variable
         for interaction in interaction_terms_2way:
-            match = treatment_pattern_2way.match(interaction)
-            if match:
-                var = match.group(1)
-                if var in valid_two_way:
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': [self.treatment, var],
-                        'order': 2
-                    })
+            # Check if interaction contains treatment
+            if re.search(treatment_pattern, interaction):
+                # Check if it contains any of the two_way variables
+                for var in valid_two_way:
+                    var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
+                    if re.search(var_pattern, interaction):
+                        # Verify it has exactly 1 colon (2-way interaction)
+                        if interaction.count(':') == 1:
+                            # Check that the column is not constant (has variation)
+                            if result_data[interaction].nunique() > 1:
+                                # Extract the actual variables from the interaction name
+                                parts = interaction.split(':')
+                                self.interaction_terms.append({
+                                    'name': interaction,
+                                    'variables': parts,
+                                    'order': 2
+                                })
+                                break  # Only add once per interaction
 
         # Find matching 3-way interactions
+        # Logic: Find all 3-way interactions that contain treatment AND a two_way variable AND a three_way variable
         for interaction in interaction_terms_3way:
-            match = treatment_pattern_3way.match(interaction)
-            if match:
-                var1 = match.group(1)
-                var2 = match.group(2)
-                # Check if both variables are in user selection
-                # var1 should be in two_way, var2 should be in two_way or three_way
-                if var1 in valid_two_way and (var2 in valid_two_way or var2 in valid_three_way):
-                    self.interaction_terms.append({
-                        'name': interaction,
-                        'variables': [self.treatment, var1, var2],
-                        'order': 3
-                    })
+            # Check if interaction contains treatment
+            if re.search(treatment_pattern, interaction):
+                # Check if it contains any of the two_way variables
+                contains_two_way = False
+                matching_two_way_var = None
+                for var in valid_two_way:
+                    var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
+                    if re.search(var_pattern, interaction):
+                        contains_two_way = True
+                        matching_two_way_var = var
+                        break
+
+                if contains_two_way:
+                    # Check if it contains any of the three_way variables (or another two_way variable)
+                    contains_third = False
+                    for var in valid_three_way + valid_two_way:
+                        if var != matching_two_way_var:  # Don't match the same variable twice
+                            var_pattern = re.compile(f".*{re.escape(var)}.*", re.IGNORECASE)
+                            if re.search(var_pattern, interaction):
+                                contains_third = True
+                                break
+
+                    if contains_third:
+                        # Verify it has exactly 2 colons (3-way interaction)
+                        if interaction.count(':') == 2:
+                            # Check that the column is not constant (has variation)
+                            if result_data[interaction].nunique() > 1:
+                                # Extract the actual variables from the interaction name
+                                parts = interaction.split(':')
+                                self.interaction_terms.append({
+                                    'name': interaction,
+                                    'variables': parts,
+                                    'order': 3
+                                })
 
         n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
         n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)
