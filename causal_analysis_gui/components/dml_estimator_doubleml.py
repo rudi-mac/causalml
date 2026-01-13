@@ -64,19 +64,37 @@ class DMLEstimatorDoubleML:
             import doubleml as dml
             from scipy import stats
 
-            # Preprocess data
+            # Preprocess data (this will one-hot encode categorical variables)
             processed_data = self._preprocess_data()
 
             # Construct interaction terms
             processed_data = self._construct_interaction_terms(processed_data)
 
-            # Create list of all treatments: main treatment + two_way vars + all interactions
-            # Following Sample_Analysis.ipynb logic: include both main treatments
-            treatment_variables = [self.treatment]
+            # Create list of all treatments: main treatment(s) + two_way vars + all interactions
+            # Following Sample_Analysis.ipynb logic where treatment variables includes all dummy variables
+            treatment_variables = []
+
+            # Add main treatment variable(s)
+            # If treatment was categorical and got expanded, add all dummy variables
+            if hasattr(self, 'categorical_mappings') and self.treatment in self.categorical_mappings:
+                # Treatment was categorical - add all dummy variables
+                for dummy_col in self.categorical_mappings[self.treatment]:
+                    if dummy_col in processed_data.columns:
+                        treatment_variables.append(dummy_col)
+                print(f"Treatment '{self.treatment}' was categorical, expanded to: {self.categorical_mappings[self.treatment]}")
+            elif self.treatment in processed_data.columns:
+                # Treatment is continuous or binary
+                treatment_variables.append(self.treatment)
 
             # Add two_way interaction variables as separate main effects (like Gender_Female in Sample_Analysis)
             for var in self.two_way_interaction_variables:
-                if var in processed_data.columns and var not in treatment_variables:
+                # Check if var was one-hot encoded
+                if hasattr(self, 'categorical_mappings') and var in self.categorical_mappings:
+                    # Variable was categorical - add all dummy variables
+                    for dummy_col in self.categorical_mappings[var]:
+                        if dummy_col in processed_data.columns and dummy_col not in treatment_variables:
+                            treatment_variables.append(dummy_col)
+                elif var in processed_data.columns and var not in treatment_variables:
                     treatment_variables.append(var)
 
             # Add interaction terms as additional treatments
@@ -388,6 +406,9 @@ class DMLEstimatorDoubleML:
     def _preprocess_data(self):
         """
         Preprocess data based on variable types
+        Following Sample_Analysis.ipynb logic:
+        1. One-hot encode categorical variables
+        2. Drop one category per categorical variable to avoid dummy trap
 
         Returns:
             pd.DataFrame: Preprocessed data
@@ -397,20 +418,56 @@ class DMLEstimatorDoubleML:
         # Handle missing values
         processed = processed.dropna(subset=[self.treatment, self.outcome])
 
-        # Encode categorical variables
-        for col, dtype in self.column_types.items():
-            if col not in processed.columns:
+        print("\n" + "="*80)
+        print("DATA PREPROCESSING (Sample_Analysis.ipynb logic)")
+        print("="*80)
+
+        # Track original categorical variables and their dummy columns
+        self.categorical_mappings = {}  # Maps original col -> list of dummy cols
+        self.dropped_categories = {}     # Maps original col -> dropped category
+
+        # One-hot encode categorical variables (following Sample_Analysis.ipynb)
+        categorical_cols = [col for col, dtype in self.column_types.items()
+                          if dtype in ['categorical', 'binary'] and col in processed.columns]
+
+        print(f"\nCategorical variables to encode: {categorical_cols}")
+
+        for col in categorical_cols:
+            if col == self.outcome:
+                # Don't one-hot encode the outcome
                 continue
 
-            if dtype in ['binary', 'categorical', 'ordinal']:
-                # Label encoding
-                le = LabelEncoder()
-                # Handle any remaining NaN
-                mask = processed[col].notna()
-                if mask.any():
-                    processed.loc[mask, col] = le.fit_transform(
-                        processed.loc[mask, col].astype(str)
-                    )
+            # Get dummies with proper naming
+            dummies = pd.get_dummies(processed[col], dtype=int, prefix=col)
+
+            # Drop one category to avoid dummy trap (drop first category alphabetically)
+            sorted_dummy_cols = sorted(dummies.columns)
+            dropped_col = sorted_dummy_cols[0]
+            kept_cols = sorted_dummy_cols[1:]
+
+            print(f"\n  {col}:")
+            print(f"    Categories: {sorted_dummy_cols}")
+            print(f"    Dropped: {dropped_col}")
+            print(f"    Kept: {kept_cols}")
+
+            # Add kept dummy columns to processed data
+            for dummy_col in kept_cols:
+                processed[dummy_col] = dummies[dummy_col]
+
+            # Store mapping
+            self.categorical_mappings[col] = kept_cols
+            self.dropped_categories[col] = dropped_col
+
+            # Drop original categorical column
+            processed = processed.drop(columns=[col])
+
+        # Update column_types to include dummy variables
+        for orig_col, dummy_cols in self.categorical_mappings.items():
+            for dummy_col in dummy_cols:
+                self.column_types[dummy_col] = 'binary'
+            # Remove original categorical column type
+            if orig_col in self.column_types:
+                del self.column_types[orig_col]
 
         # Convert to numeric
         for col in processed.columns:
@@ -421,6 +478,10 @@ class DMLEstimatorDoubleML:
 
         # Drop any remaining NaN
         processed = processed.dropna()
+
+        print(f"\nPreprocessed data shape: {processed.shape}")
+        print(f"Columns: {list(processed.columns)}")
+        print("="*80 + "\n")
 
         return processed
 
