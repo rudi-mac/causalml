@@ -406,15 +406,9 @@ def step_1_paste_dag():
 
             st.success(f"✅ Parsed DAG with {dag.number_of_nodes()} nodes and {dag.number_of_edges()} edges")
 
-            # Visualize DAG
-            st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
-            from components.dag_editor import DAGEditor
-            dag_editor = DAGEditor(nodes)
-            dag_editor._visualize_dag(dag)
-
             st.markdown("---")
 
-            # Now ask user to define data types, treatment, and outcome
+            # Now ask user to define data types, treatment, and outcome BEFORE visualization
             st.markdown("### Define Variable Configuration")
 
             # Initialize configuration in session state
@@ -464,6 +458,16 @@ def step_1_paste_dag():
                         label_visibility="collapsed"
                     )
                     variables_config[node] = {'type': var_type}
+
+            st.markdown("---")
+
+            # Visualize DAG with treatment and outcome highlighted
+            st.markdown("#### DAG Visualization (Interactive - Drag nodes to reposition)")
+            from components.dag_editor import DAGEditor
+            dag_editor = DAGEditor(nodes)
+            dag_editor._visualize_dag(dag, treatment=treatment, outcome=outcome)
+
+            st.markdown("---")
 
             # Save configuration button
             if st.button("✅ Confirm DAG Configuration", type="primary", use_container_width=True):
