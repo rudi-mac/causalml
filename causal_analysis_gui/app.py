@@ -770,26 +770,57 @@ def step_3_specify_interactions():
     # Show preview of interactions
     if two_way_vars or three_way_vars:
         with st.expander("📋 Preview of Interaction Terms", expanded=True):
+            # Helper function to get categorical values from data
+            def get_categorical_info(var):
+                var_type = st.session_state.dag_variables.get(var, {}).get('type', 'unknown')
+                if var_type in ['categorical', 'ordinal'] and st.session_state.data is not None and var in st.session_state.data.columns:
+                    unique_values = st.session_state.data[var].unique()
+                    n_values = len(unique_values)
+                    if n_values <= 5:  # Show values if 5 or fewer
+                        return var_type, f"Values: {', '.join(map(str, unique_values))}"
+                    else:
+                        return var_type, f"{n_values} categories (one dummy per category)"
+                elif var_type in ['categorical', 'ordinal']:
+                    return var_type, "Multiple categories"
+                return var_type, None
+
             if two_way_vars:
                 st.markdown("**Two-way interactions:**")
+                st.markdown(f"*Each interaction combines {treatment} with one of the selected variables*")
                 for var in two_way_vars:
-                    var_type = st.session_state.dag_variables.get(var, {}).get('type', 'unknown')
-                    if var_type == 'categorical':
-                        st.markdown(f"- {treatment} × {var} (one term per category)")
-                    else:
-                        st.markdown(f"- {treatment} × {var}")
+                    var_type, cat_info = get_categorical_info(var)
+                    treatment_type, treatment_info = get_categorical_info(treatment)
+
+                    interaction_str = f"- {treatment} × {var}"
+                    if var_type in ['categorical', 'ordinal'] or treatment_type in ['categorical', 'ordinal']:
+                        interaction_str += " → "
+                        if treatment_type in ['categorical', 'ordinal'] and var_type in ['categorical', 'ordinal']:
+                            interaction_str += "Multiple terms (one per combination of categories)"
+                        elif treatment_type in ['categorical', 'ordinal']:
+                            interaction_str += f"Multiple terms (one per {treatment} category)"
+                        else:
+                            interaction_str += f"Multiple terms (one per {var} category)"
+                        if cat_info:
+                            interaction_str += f"\n  - {var}: {cat_info}"
+                        if treatment_info and treatment_type in ['categorical', 'ordinal']:
+                            interaction_str += f"\n  - {treatment}: {treatment_info}"
+                    st.markdown(interaction_str)
 
             if two_way_vars and three_way_vars:
                 st.markdown("**Three-way interactions:**")
+                st.markdown(f"*Each interaction combines {treatment} with two selected variables*")
                 for two_way_var in two_way_vars:
                     for three_way_var in three_way_vars:
-                        two_way_type = st.session_state.dag_variables.get(two_way_var, {}).get('type', 'unknown')
-                        three_way_type = st.session_state.dag_variables.get(three_way_var, {}).get('type', 'unknown')
+                        two_way_type, two_way_info = get_categorical_info(two_way_var)
+                        three_way_type, three_way_info = get_categorical_info(three_way_var)
+                        treatment_type, treatment_info = get_categorical_info(treatment)
 
-                        interaction_str = f"{treatment} × {two_way_var} × {three_way_var}"
-                        if two_way_type == 'categorical' or three_way_type == 'categorical':
-                            interaction_str += " (one term per category combination)"
-                        st.markdown(f"- {interaction_str}")
+                        interaction_str = f"- {treatment} × {two_way_var} × {three_way_var}"
+                        has_categorical = any(t in ['categorical', 'ordinal'] for t in [treatment_type, two_way_type, three_way_type])
+
+                        if has_categorical:
+                            interaction_str += " → Multiple terms (one per category combination)"
+                        st.markdown(interaction_str)
             elif not two_way_vars:
                 st.markdown("**Three-way interactions:** *Select two-way variables first*")
 
@@ -862,33 +893,101 @@ def step_4_run_analysis():
 
     # Run analysis button
     if st.button("🚀 Run DML Analysis", type="primary", use_container_width=True):
-        with st.spinner("Running Double Machine Learning... This may take a few minutes."):
-            try:
-                estimator = DMLEstimatorDoubleML(
-                    data=st.session_state.data,
-                    dag=st.session_state.dag,
-                    treatment=st.session_state.treatment,
-                    outcome=st.session_state.outcome,
-                    column_types=st.session_state.column_types,
-                    two_way_interaction_variables=st.session_state.two_way_interaction_variables,
-                    three_way_interaction_variables=st.session_state.three_way_interaction_variables
-                )
+        try:
+            # Create progress bar and status message placeholders
+            progress_bar = st.progress(0)
+            status_text = st.empty()
 
-                results = estimator.estimate_ate(
-                    discrete_treatment=discrete_treatment,
-                    n_splits=n_splits
-                )
+            # Define progress callback
+            def update_progress(current, total, message):
+                progress_value = int((current / total) * 100)
+                progress_bar.progress(progress_value)
+                status_text.text(f"⏳ {message}")
 
-                st.session_state.results = results
-                st.success("✅ Analysis complete!")
+            # Run analysis with progress tracking
+            estimator = DMLEstimatorDoubleML(
+                data=st.session_state.data,
+                dag=st.session_state.dag,
+                treatment=st.session_state.treatment,
+                outcome=st.session_state.outcome,
+                column_types=st.session_state.column_types,
+                two_way_interaction_variables=st.session_state.two_way_interaction_variables,
+                three_way_interaction_variables=st.session_state.three_way_interaction_variables
+            )
 
-            except Exception as e:
-                st.error(f"❌ Analysis failed: {str(e)}")
-                st.exception(e)
+            results = estimator.estimate_ate(
+                discrete_treatment=discrete_treatment,
+                n_splits=n_splits,
+                progress_callback=update_progress
+            )
+
+            st.session_state.results = results
+
+            # Clear progress indicators and show success
+            progress_bar.empty()
+            status_text.empty()
+            st.success("✅ Analysis complete!")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Analysis failed: {str(e)}")
+            st.exception(e)
 
     # Display results directly if available (following Sample_Analysis.ipynb)
     if st.session_state.results is not None:
         results = st.session_state.results
+
+        st.markdown("---")
+
+        # Display treatment variables breakdown
+        st.markdown("### 📋 Treatment Variables Estimated")
+        st.markdown("""
+        The following treatment effects were estimated by the DML model.
+        Each variable represents a separate causal effect on the outcome.
+        """)
+
+        # Get categorized treatment variables from results
+        main_treatment_vars = results.get('main_treatment_vars', [])
+        two_way_vars = results.get('two_way_interaction_vars', [])
+        three_way_vars = results.get('three_way_interaction_vars', [])
+
+        # Display metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Variables", len(main_treatment_vars) + len(two_way_vars) + len(three_way_vars))
+        with col2:
+            st.metric("Main Treatment", len(main_treatment_vars))
+        with col3:
+            st.metric("2-way Interactions", len(two_way_vars))
+        with col4:
+            st.metric("3-way Interactions", len(three_way_vars))
+
+        # Display organized list
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("#### Main Treatment Effect")
+            if main_treatment_vars:
+                for var in main_treatment_vars:
+                    st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
+
+        with col2:
+            st.markdown("#### 2-way Interaction(s)")
+            if two_way_vars:
+                for var in two_way_vars:
+                    st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
+
+        with col3:
+            st.markdown("#### 3-way Interactions")
+            if three_way_vars:
+                for var in three_way_vars:
+                    st.markdown(f"- `{var}`")
+            else:
+                st.markdown("*None*")
 
         st.markdown("---")
         st.markdown("### 📊 DML Estimation Results")
