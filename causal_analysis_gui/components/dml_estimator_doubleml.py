@@ -21,7 +21,7 @@ class DMLEstimatorDoubleML:
 
     def __init__(self, data, dag, treatment, outcome, column_types,
                  two_way_interaction_variables=None, three_way_interaction_variables=None,
-                 interaction_variables=None, categorical_drop_values=None):
+                 interaction_variables=None, categorical_drop_values=None, mediators=None):
         """
         Initialize DML estimator
 
@@ -35,6 +35,7 @@ class DMLEstimatorDoubleML:
             three_way_interaction_variables (list): Variables for three-way interactions
             interaction_variables (list): DEPRECATED - Use two_way and three_way instead
             categorical_drop_values (dict): Dict mapping categorical variable names to values to drop (reference categories)
+            mediators (set): Set of mediator variable names (on causal path, excluded from interactions)
         """
         self.data = data.copy()
         self.dag = dag
@@ -46,6 +47,7 @@ class DMLEstimatorDoubleML:
         # Legacy support
         self.interaction_variables = interaction_variables or []
         self.categorical_drop_values = categorical_drop_values or {}
+        self.mediators = mediators or set()
         self.model = None
         self.interaction_terms = []
         self.categorical_mapping = {}  # Maps original categorical variable name to list of dummy columns
@@ -352,8 +354,25 @@ class DMLEstimatorDoubleML:
 
         # Following Sample_Analysis.ipynb cell 35: unique_values = causal_df.drop('Hourly_Salary_log',axis=1).columns
         # This gets ALL columns except outcome (includes treatment)
-        unique_values = [col for col in data.columns if col != self.outcome]
-        print(f"\nStep 1: Created unique_values list (all columns except outcome): {len(unique_values)} variables")
+        # CRITICAL: Also exclude mediators - they are on the causal path and should NOT be in interactions
+
+        # Get dummified mediator column names
+        mediator_columns = set()
+        for mediator in self.mediators:
+            if mediator in self.categorical_mapping:
+                # Mediator was categorical, add all its dummy columns
+                mediator_columns.update(self.categorical_mapping[mediator])
+            else:
+                # Mediator is not categorical
+                mediator_columns.add(mediator)
+
+        unique_values = [col for col in data.columns
+                        if col != self.outcome and col not in mediator_columns]
+
+        print(f"\nStep 1: Created unique_values list (all columns except outcome and mediators): {len(unique_values)} variables")
+        if self.mediators:
+            print(f"Excluded mediators (on causal path): {self.mediators}")
+            print(f"Excluded mediator columns after dummification: {mediator_columns}")
         print(f"unique_values sample (first 10): {unique_values[:10]}")
 
         # Show prefix distribution to help understand the filtering
@@ -547,6 +566,10 @@ class DMLEstimatorDoubleML:
                         })
 
         # Find ALL 3-way interactions that contain treatment AND two other selected variables
+        # CRITICAL REQUIREMENT: 3-way interactions MUST include:
+        # 1. The main treatment variable
+        # 2. At least one variable from the two_way_interaction_variables list
+        # 3. The third variable can be from either two_way or three_way list
         for interaction in interaction_terms_3way:
             parts = interaction.split(':')
             # Check if interaction contains treatment
@@ -557,20 +580,23 @@ class DMLEstimatorDoubleML:
                 # Get the other two variables (not treatment)
                 other_vars = [p for p in parts if p not in treatment_vars]
 
-                # For 3-way, we need at least 2 other variables besides treatment
-                # These can be from two_way list or three_way list
-                all_selected_vars = list(set(valid_two_way + valid_three_way))
-                matching_vars = [v for v in other_vars if v in all_selected_vars]
+                # CRITICAL: Must have at least one variable from the two_way list
+                has_two_way_var = any(v in valid_two_way for v in other_vars)
 
-                # We need at least 2 matching variables (besides treatment) to form a valid 3-way interaction
-                if len(matching_vars) >= 2:
-                    # Check that the column is not constant (has variation)
-                    if result_data[interaction].nunique() > 1:
-                        self.interaction_terms.append({
-                            'name': interaction,
-                            'variables': parts,
-                            'order': 3
-                        })
+                if has_two_way_var:
+                    # Check if both other variables are in the selected lists (two_way or three_way)
+                    all_selected_vars = list(set(valid_two_way + valid_three_way))
+                    matching_vars = [v for v in other_vars if v in all_selected_vars]
+
+                    # We need exactly 2 matching variables (besides treatment) to form a valid 3-way interaction
+                    if len(matching_vars) >= 2:
+                        # Check that the column is not constant (has variation)
+                        if result_data[interaction].nunique() > 1:
+                            self.interaction_terms.append({
+                                'name': interaction,
+                                'variables': parts,
+                                'order': 3
+                            })
 
         n_two_way = sum(1 for t in self.interaction_terms if t['order'] == 2)
         n_three_way = sum(1 for t in self.interaction_terms if t['order'] == 3)

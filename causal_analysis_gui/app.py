@@ -49,6 +49,8 @@ if 'categorical_drop_values' not in st.session_state:
     st.session_state.categorical_drop_values = {}  # Dict of categorical_var: value_to_drop
 if 'categorical_drop_confirmed' not in st.session_state:
     st.session_state.categorical_drop_confirmed = False
+if 'mediators' not in st.session_state:
+    st.session_state.mediators = set()  # Set of mediator variables (on causal path, excluded from interactions)
 
 def main():
     """Main application flow"""
@@ -706,6 +708,9 @@ def step_3_specify_interactions():
         if has_incoming and has_outgoing_to_outcome:
             mediators.add(node)
 
+    # Store mediators in session state for use in DML estimator
+    st.session_state.mediators = mediators
+
     # Remove mediators from available variables
     all_variables = [v for v in all_variables if v not in mediators]
 
@@ -994,7 +999,8 @@ def step_4_run_analysis():
             column_types=st.session_state.column_types,
             two_way_interaction_variables=st.session_state.two_way_interaction_variables,
             three_way_interaction_variables=st.session_state.three_way_interaction_variables,
-            categorical_drop_values=st.session_state.categorical_drop_values
+            categorical_drop_values=st.session_state.categorical_drop_values,
+            mediators=st.session_state.mediators
         )
 
         # Preprocess data to get the final dataframe shape
@@ -1109,7 +1115,8 @@ def step_4_run_analysis():
                 column_types=st.session_state.column_types,
                 two_way_interaction_variables=st.session_state.two_way_interaction_variables,
                 three_way_interaction_variables=st.session_state.three_way_interaction_variables,
-                categorical_drop_values=st.session_state.categorical_drop_values
+                categorical_drop_values=st.session_state.categorical_drop_values,
+                mediators=st.session_state.mediators
             )
 
             results = estimator.estimate_ate(
