@@ -385,36 +385,7 @@ def step_0_workflow_overview():
 
     This approach enables you to **robustly explore and estimate interaction effects** without
     the limitations of traditional regression that requires pre-selecting a small subset of interactions.
-
-    ---
-
-    ### The Workflow
-
-    This tool guides you through a systematic 7-step process:
     """)
-
-    # Display workflow steps
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        st.markdown("""
-        #### Steps:
-        1. **Build Causal DAG**
-        2. **Upload Data**
-        3. **Specify Interactions**
-        4. **Run DML Analysis**
-        5. **View Results**
-        """)
-
-    with col2:
-        st.markdown("""
-        #### What Happens:
-        - Define treatment & outcome, add variables to DAG with types
-        - Load your CSV dataset matching DAG variables
-        - **Select variables for interaction term construction**
-        - Estimate effects using DML with LASSO
-        - Review main and interaction effects with significance
-        """)
 
     st.markdown("---")
 
