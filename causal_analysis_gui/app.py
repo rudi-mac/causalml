@@ -390,19 +390,20 @@ def step_0_workflow_overview():
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
 
-    **Graph-Based Double Machine Learning** is a powerful methodology that combines:
-    - **Directed Acyclic Graphs (DAGs)** to represent causal assumptions
-    - **Double Machine Learning (DML)** to handle high-dimensional settings
-    - **Interaction term exploration** to discover heterogeneous effects
+    **Graph-Based Double Machine Learning** is a framework that combines:
+    - **Directed Acyclic Graphs (DAGs)** to represent causal assumptions and avoid bad controls
+    - **Double Machine Learning (DML)** to handle high-dimensional data (i.e., many covariates)
 
-    This approach enables you to **robustly explore and estimate interaction effects** without
-    the limitations of traditional regression that requires pre-selecting a small subset of interactions.
+    to **robustly estimate effect heterogeneity** across a large set of variables.
+
+    This approach enables you to explore **interaction effects** without the limitations of traditional
+    regression (ordinary least squares) that requires pre-selecting a subset of interactions.
     """)
 
     st.markdown("---")
 
     # Interactive workflow diagram
-    st.subheader("🔄 Visual Workflow")
+    st.subheader("🔄 Visual Overview of the Workflow")
     st.markdown("*Hover over each box to see detailed explanations*")
 
     # Display interactive HTML workflow diagram
