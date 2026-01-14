@@ -55,12 +55,6 @@ if 'mediators' not in st.session_state:
 def main():
     """Main application flow"""
 
-    # Description only (no title - it's in the logo)
-    st.markdown("""
-    This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
-    Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
-    """)
-
     # Sidebar for navigation
     with st.sidebar:
         st.header("Workflow Steps")
@@ -372,6 +366,14 @@ def step_0_workflow_overview():
         st.image("Logo.png", width=400)
     except Exception:
         pass  # If logo not found, continue without it
+
+    # Description below logo
+    st.markdown("""
+    This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
+    Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
+    """)
+
+    st.markdown("---")
 
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
