@@ -68,11 +68,13 @@ def main():
             "Current Step:",
             [
                 "0️⃣ Workflow Overview",
-                "1️⃣ Build Causal DAG",
+                "1️⃣ Build DAG",
                 "2️⃣ Upload Data",
-                "3️⃣ Specify Interactions",
-                "4️⃣ Run DML Analysis",
-                "5️⃣ View Results"
+                "3️⃣ Specify Learner",
+                "4️⃣ Specify Interactions",
+                "5️⃣ Fit Models",
+                "6️⃣ Perform Sensitivity Analysis",
+                "7️⃣ Select Robust Interactions"
             ],
             index=st.session_state.step
         )
@@ -100,11 +102,15 @@ def main():
     elif st.session_state.step == 2:
         step_2_upload_data()
     elif st.session_state.step == 3:
-        step_3_specify_interactions()
+        step_3_specify_learner()
     elif st.session_state.step == 4:
-        step_4_run_analysis()
+        step_4_specify_interactions()
     elif st.session_state.step == 5:
-        step_5_view_results()
+        step_5_fit_models()
+    elif st.session_state.step == 6:
+        step_6_sensitivity_analysis()
+    elif st.session_state.step == 7:
+        step_7_select_robust_interactions()
 
 
 def get_workflow_diagram_html():
@@ -854,14 +860,57 @@ def step_2_upload_data():
                 st.session_state.step = 1
                 st.rerun()
         with col3:
-            if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Specify Learner", type="primary", use_container_width=True):
                 st.session_state.step = 3
                 st.rerun()
 
 
-def step_3_specify_interactions():
-    """Step 3: Specify which variables to use for interaction terms"""
-    st.header("Step 3: Specify Interactions of Interest")
+def step_3_specify_learner():
+    """Step 3: Specify Learner"""
+    st.header("Step 3: Specify Learner")
+
+    st.markdown("""
+    Within the DML framework, the researcher is free to choose what type of
+    model and estimator to use. To provide an accessible introduction to the algorithm-supported
+    abduction process, we choose a **partially linear model** in combination with a **LASSO regression
+    algorithm** for both the outcome and the treatment models.
+
+    ### What are Partially Linear Models?
+
+    Partially linear models are a class of statistical
+    models that blend the interpretability of parametric components with the flexibility of nonparametric
+    methods. The parametric portion provides straightforward interpretability, akin to OLS coefficients,
+    while the nonparametric component does not assume any specific functional form and therefore allows
+    for capturing nonlinear relationships.
+
+    ### Why LASSO for DML?
+
+    Partially linear models are designed to separate the causal effect
+    of interest from those of the control variables, which are estimated flexibly using a combination of
+    regularization and orthogonalization. This reduces model misspecification risk while ensuring
+    robustness to complex confounding structures. This setup balances theoretical transparency and
+    computational flexibility, making it well suited for exploratory causal inference in organizational data.
+    """)
+
+    st.warning("""
+    **Disclaimer:** Currently, we only support LASSO models. Future models will be added at a later stage.
+    """)
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Upload Data", use_container_width=True):
+            st.session_state.step = 2
+            st.rerun()
+    with col3:
+        if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
+            st.session_state.step = 4
+            st.rerun()
+
+
+def step_4_specify_interactions():
+    """Step 4: Specify which variables to use for interaction terms"""
+    st.header("Step 4: Specify Interactions of Interest")
 
     if st.session_state.dag is None:
         st.warning("⚠️ Please create a DAG first (Step 3)")
@@ -1050,22 +1099,22 @@ def step_3_specify_interactions():
     # Navigation buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Upload Data", use_container_width=True):
-            st.session_state.step = 2
+        if st.button("⬅️ Back to Specify Learner", use_container_width=True):
+            st.session_state.step = 3
             st.rerun()
     with col3:
         if can_proceed:
-            if st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
-                st.session_state.step = 4
+            if st.button("➡️ Proceed to Fit Models", type="primary", use_container_width=True):
+                st.session_state.step = 5
                 st.rerun()
         else:
-            st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True, disabled=True)
+            st.button("➡️ Proceed to Fit Models", type="primary", use_container_width=True, disabled=True)
             st.warning("⚠️ Please select at least one variable for two-way interactions to proceed.")
 
 
-def step_4_run_analysis():
-    """Step 4: Run DML analysis"""
-    st.header("Step 4: Run DML Analysis")
+def step_5_fit_models():
+    """Step 5: Fit Treatment & Outcome Models"""
+    st.header("Step 5: Fit Treatment & Outcome Models")
 
     if st.session_state.treatment is None or st.session_state.outcome is None:
         st.warning("⚠️ Please build your DAG with treatment and outcome (Step 1)")
@@ -1140,7 +1189,7 @@ def step_4_run_analysis():
 
         # Show back button
         if st.button("⬅️ Back to Interactions", use_container_width=True):
-            st.session_state.step = 3
+            st.session_state.step = 4
             st.rerun()
 
         return  # Don't show the rest of Step 4 until user confirms
@@ -1334,173 +1383,254 @@ def step_4_run_analysis():
             # Clear progress indicators and show success
             progress_bar.empty()
             status_text.empty()
-            st.success("✅ Analysis complete!")
+            st.success("✅ Analysis complete! Proceed to the next step to view results.")
             st.rerun()
 
         except Exception as e:
             st.error(f"❌ Analysis failed: {str(e)}")
             st.exception(e)
 
-    # Display results directly if available (following Sample_Analysis.ipynb)
+    # If analysis is complete, show option to proceed
     if st.session_state.results is not None:
-        results = st.session_state.results
-
         st.markdown("---")
-        st.markdown("### 📊 DML Estimation Results")
-        st.markdown("""
-        Comprehensive results table showing all treatment effects.
-        Click column headers to sort. Use filters below to refine the view.
-        """)
-
-        # Display the comprehensive results dataframe
-        if results.get('detailed_results_df') is not None:
-            detailed_df = results['detailed_results_df']
-
-            # Display metrics for summary
-            total_treatments = len(detailed_df)
-            sig_1pct = detailed_df['sig_1pct'].sum()
-            sig_5pct = detailed_df['sig_5pct'].sum()
-            sig_10pct = detailed_df['sig_10pct'].sum()
-
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Treatments", total_treatments)
-            with col2:
-                st.metric("Sig. at 1%", sig_1pct)
-            with col3:
-                st.metric("Sig. at 5%", sig_5pct)
-            with col4:
-                st.metric("Sig. at 10%", sig_10pct)
-
-            # Add filtering options
-            st.markdown("#### Filters")
-            filter_col1, filter_col2, filter_col3 = st.columns(3)
-
-            with filter_col1:
-                significance_filter = st.selectbox(
-                    "Significance Level",
-                    options=["All", "p < 0.01", "p < 0.05", "p < 0.10", "Not Significant"],
-                    index=0,
-                    key="step4_sig_filter"
-                )
-
-            with filter_col2:
-                sort_column = st.selectbox(
-                    "Sort By",
-                    options=["p_value", "coefficient", "std_error", "t_statistic", "treatment"],
-                    index=0,
-                    key="step4_sort_col"
-                )
-
-            with filter_col3:
-                sort_order = st.radio(
-                    "Sort Order",
-                    options=["Ascending", "Descending"],
-                    index=0 if sort_column == "p_value" else 1,
-                    horizontal=True,
-                    key="step4_sort_order"
-                )
-
-            # Apply filters
-            filtered_df = detailed_df.copy()
-
-            if significance_filter == "p < 0.01":
-                filtered_df = filtered_df[filtered_df['sig_1pct']]
-            elif significance_filter == "p < 0.05":
-                filtered_df = filtered_df[filtered_df['sig_5pct']]
-            elif significance_filter == "p < 0.10":
-                filtered_df = filtered_df[filtered_df['sig_10pct']]
-            elif significance_filter == "Not Significant":
-                filtered_df = filtered_df[~filtered_df['sig_10pct']]
-
-            # Apply sorting
-            ascending = (sort_order == "Ascending")
-            filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
-
-            # Reset index for display
-            filtered_df = filtered_df.reset_index(drop=True)
-
-            # Display the detailed dataframe
-            st.markdown(f"#### Results Table ({len(filtered_df)} of {len(detailed_df)} rows)")
-
-            # Create a formatted display dataframe
-            display_df = filtered_df.copy()
-
-            # Add significance stars column first
-            def add_stars(row):
-                if row['sig_1pct']:
-                    return '***'
-                elif row['sig_5pct']:
-                    return '**'
-                elif row['sig_10pct']:
-                    return '*'
-                else:
-                    return ''
-
-            display_df.insert(0, 'sig', filtered_df.apply(add_stars, axis=1))
-
-            # Reorder columns for better readability
-            column_order = ['sig', 'treatment', 'coefficient', 'std_error', 't_statistic', 'p_value',
-                           'ci_lower_95', 'ci_upper_95', 'sig_1pct', 'sig_5pct', 'sig_10pct']
-            display_df = display_df[column_order]
-
-            # Rename columns for better display
-            display_df = display_df.rename(columns={
-                'sig': 'Sig.',
-                'treatment': 'Treatment',
-                'coefficient': 'Coefficient',
-                'std_error': 'Std Error',
-                't_statistic': 't-Statistic',
-                'p_value': 'P-Value',
-                'ci_lower_95': 'CI Lower (95%)',
-                'ci_upper_95': 'CI Upper (95%)',
-                'sig_1pct': 'p<0.01',
-                'sig_5pct': 'p<0.05',
-                'sig_10pct': 'p<0.10'
-            })
-
-            # Display with interactive dataframe
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                height=500,
-                column_config={
-                    "Sig.": st.column_config.TextColumn(width="small"),
-                    "Treatment": st.column_config.TextColumn(width="large"),
-                    "Coefficient": st.column_config.NumberColumn(format="%.6f"),
-                    "Std Error": st.column_config.NumberColumn(format="%.6f"),
-                    "t-Statistic": st.column_config.NumberColumn(format="%.4f"),
-                    "P-Value": st.column_config.NumberColumn(format="%.6f"),
-                    "CI Lower (95%)": st.column_config.NumberColumn(format="%.6f"),
-                    "CI Upper (95%)": st.column_config.NumberColumn(format="%.6f"),
-                    "p<0.01": st.column_config.CheckboxColumn(),
-                    "p<0.05": st.column_config.CheckboxColumn(),
-                    "p<0.10": st.column_config.CheckboxColumn()
-                }
-            )
-
-            st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
-
-            # Add download button for filtered results
-            csv_data = filtered_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Filtered Results (CSV)",
-                data=csv_data,
-                file_name="dml_results_filtered.csv",
-                mime="text/csv",
-                key="step4_download"
-            )
+        st.success("✅ Model fitting complete! The treatment and outcome models have been trained.")
+        st.info("Click 'Proceed to Sensitivity Analysis' to continue with the workflow.")
 
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         if st.button("⬅️ Back to Interactions", use_container_width=True):
-            st.session_state.step = 3
+            st.session_state.step = 4
+            st.rerun()
+    with col3:
+        if st.session_state.results is not None:
+            if st.button("➡️ Proceed to Sensitivity Analysis", type="primary", use_container_width=True):
+                st.session_state.step = 6
+                st.rerun()
+        else:
+            st.button("➡️ Proceed to Sensitivity Analysis", type="primary", use_container_width=True, disabled=True)
+
+
+def step_6_sensitivity_analysis():
+    """Step 6: Perform Sensitivity Analysis"""
+    st.header("Step 6: Perform Sensitivity Analysis")
+
+    st.markdown("""
+    Sensitivity analysis evaluates the robustness of causal estimates by examining the impact of
+    unobserved confounders, ensuring confidence in the derived conclusions.
+
+    This step helps researchers understand how sensitive their findings are to potential violations
+    of the ignorability assumption and provides bounds on the treatment effects under various scenarios.
+    """)
+
+    st.warning("""
+    **Disclaimer:** Sensitivity analysis functionality will be added at a later stage.
+
+    For now, you can proceed to view the robust interaction results in the next step.
+    """)
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Fit Models", use_container_width=True):
+            st.session_state.step = 5
+            st.rerun()
+    with col3:
+        if st.session_state.results is not None:
+            if st.button("➡️ Proceed to Select Robust Interactions", type="primary", use_container_width=True):
+                st.session_state.step = 7
+                st.rerun()
+        else:
+            st.button("➡️ Proceed to Select Robust Interactions", type="primary", use_container_width=True, disabled=True)
+            st.warning("⚠️ Please run the analysis in Step 5 first.")
+
+
+def step_7_select_robust_interactions():
+    """Step 7: Select Robust Interactions"""
+    st.header("Step 7: Select Robust Interactions")
+
+    if st.session_state.results is None:
+        st.warning("⚠️ Please run the analysis in Step 5 first.")
+        # Navigation
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            if st.button("⬅️ Back to Sensitivity Analysis", use_container_width=True):
+                st.session_state.step = 6
+                st.rerun()
+        return
+
+    results = st.session_state.results
+
+    st.markdown("""
+    This step involves selecting the interaction terms that robustly appear significant.
+    The table below shows comprehensive results for all treatment effects including main effects
+    and interaction terms.
+
+    Use the filters to identify significant interactions and download the results for further analysis.
+    """)
+
+    st.markdown("---")
+    st.markdown("### 📊 DML Estimation Results")
+    st.markdown("""
+    Comprehensive results table showing all treatment effects.
+    Click column headers to sort. Use filters below to refine the view.
+    """)
+
+    # Display the comprehensive results dataframe
+    if results.get('detailed_results_df') is not None:
+        detailed_df = results['detailed_results_df']
+
+        # Display metrics for summary
+        total_treatments = len(detailed_df)
+        sig_1pct = detailed_df['sig_1pct'].sum()
+        sig_5pct = detailed_df['sig_5pct'].sum()
+        sig_10pct = detailed_df['sig_10pct'].sum()
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Treatments", total_treatments)
+        with col2:
+            st.metric("Sig. at 1%", sig_1pct)
+        with col3:
+            st.metric("Sig. at 5%", sig_5pct)
+        with col4:
+            st.metric("Sig. at 10%", sig_10pct)
+
+        # Add filtering options
+        st.markdown("#### Filters")
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+
+        with filter_col1:
+            significance_filter = st.selectbox(
+                "Significance Level",
+                options=["All", "p < 0.01", "p < 0.05", "p < 0.10", "Not Significant"],
+                index=0,
+                key="step7_sig_filter"
+            )
+
+        with filter_col2:
+            sort_column = st.selectbox(
+                "Sort By",
+                options=["p_value", "coefficient", "std_error", "t_statistic", "treatment"],
+                index=0,
+                key="step7_sort_col"
+            )
+
+        with filter_col3:
+            sort_order = st.radio(
+                "Sort Order",
+                options=["Ascending", "Descending"],
+                index=0 if sort_column == "p_value" else 1,
+                horizontal=True,
+                key="step7_sort_order"
+            )
+
+        # Apply filters
+        filtered_df = detailed_df.copy()
+
+        if significance_filter == "p < 0.01":
+            filtered_df = filtered_df[filtered_df['sig_1pct']]
+        elif significance_filter == "p < 0.05":
+            filtered_df = filtered_df[filtered_df['sig_5pct']]
+        elif significance_filter == "p < 0.10":
+            filtered_df = filtered_df[filtered_df['sig_10pct']]
+        elif significance_filter == "Not Significant":
+            filtered_df = filtered_df[~filtered_df['sig_10pct']]
+
+        # Apply sorting
+        ascending = (sort_order == "Ascending")
+        filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
+
+        # Reset index for display
+        filtered_df = filtered_df.reset_index(drop=True)
+
+        # Display the detailed dataframe
+        st.markdown(f"#### Results Table ({len(filtered_df)} of {len(detailed_df)} rows)")
+
+        # Create a formatted display dataframe
+        display_df = filtered_df.copy()
+
+        # Add significance stars column first
+        def add_stars(row):
+            if row['sig_1pct']:
+                return '***'
+            elif row['sig_5pct']:
+                return '**'
+            elif row['sig_10pct']:
+                return '*'
+            else:
+                return ''
+
+        display_df.insert(0, 'sig', filtered_df.apply(add_stars, axis=1))
+
+        # Reorder columns for better readability
+        column_order = ['sig', 'treatment', 'coefficient', 'std_error', 't_statistic', 'p_value',
+                       'ci_lower_95', 'ci_upper_95', 'sig_1pct', 'sig_5pct', 'sig_10pct']
+        display_df = display_df[column_order]
+
+        # Rename columns for better display
+        display_df = display_df.rename(columns={
+            'sig': 'Sig.',
+            'treatment': 'Treatment',
+            'coefficient': 'Coefficient',
+            'std_error': 'Std Error',
+            't_statistic': 't-Statistic',
+            'p_value': 'P-Value',
+            'ci_lower_95': 'CI Lower (95%)',
+            'ci_upper_95': 'CI Upper (95%)',
+            'sig_1pct': 'p<0.01',
+            'sig_5pct': 'p<0.05',
+            'sig_10pct': 'p<0.10'
+        })
+
+        # Display with interactive dataframe
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=500,
+            column_config={
+                "Sig.": st.column_config.TextColumn(width="small"),
+                "Treatment": st.column_config.TextColumn(width="large"),
+                "Coefficient": st.column_config.NumberColumn(format="%.6f"),
+                "Std Error": st.column_config.NumberColumn(format="%.6f"),
+                "t-Statistic": st.column_config.NumberColumn(format="%.4f"),
+                "P-Value": st.column_config.NumberColumn(format="%.6f"),
+                "CI Lower (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "CI Upper (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "p<0.01": st.column_config.CheckboxColumn(),
+                "p<0.05": st.column_config.CheckboxColumn(),
+                "p<0.10": st.column_config.CheckboxColumn()
+            }
+        )
+
+        st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
+
+        # Add download button for filtered results
+        csv_data = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Results (CSV)",
+            data=csv_data,
+            file_name="dml_results_filtered.csv",
+            mime="text/csv",
+            key="step7_download"
+        )
+
+    # Navigation
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Sensitivity Analysis", use_container_width=True):
+            st.session_state.step = 6
+            st.rerun()
+    with col2:
+        if st.button("🔄 Start New Analysis", use_container_width=True):
+            # Reset session state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
 
 def step_5_view_results():
-    """Step 5: View results and visualizations"""
+    """Step 5: View results and visualizations (DEPRECATED - kept for backward compatibility)"""
     st.header("Step 5: Results")
 
     if st.session_state.results is None:
