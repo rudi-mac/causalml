@@ -621,9 +621,7 @@ class DAGEditor:
                         edge = (from_node, to_node)
                         if edge not in st.session_state.dag_builder_edges:
                             st.session_state.dag_builder_edges.append(edge)
-                            st.success(f"✅ Added: {from_node} → {to_node}")
-                            st.rerun()
-                        else:
+                        elif edge in st.session_state.dag_builder_edges:
                             st.warning(f"⚠️ Edge already exists: {from_node} → {to_node}")
 
                 # Show current edges

@@ -55,25 +55,26 @@ if 'mediators' not in st.session_state:
 def main():
     """Main application flow"""
 
-    # Title and description
-    st.title("🔬 Graph-Based Double Machine Learning")
-    st.markdown("""
-    This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
-    Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
-    """)
-
     # Sidebar for navigation
     with st.sidebar:
+        # Small logo at the top of sidebar
+        try:
+            st.image("Logo.png", width=150)
+        except Exception:
+            pass  # If logo not found, continue without it
+
         st.header("Workflow Steps")
         step = st.radio(
             "Current Step:",
             [
                 "0️⃣ Workflow Overview",
-                "1️⃣ Build Causal DAG",
+                "1️⃣ Build DAG",
                 "2️⃣ Upload Data",
-                "3️⃣ Specify Interactions",
-                "4️⃣ Run DML Analysis",
-                "5️⃣ View Results"
+                "3️⃣ Specify Learner",
+                "4️⃣ Specify Interactions",
+                "5️⃣ Fit Models",
+                "6️⃣ Perform Sensitivity Analysis",
+                "7️⃣ Select Robust Interactions"
             ],
             index=st.session_state.step
         )
@@ -101,103 +102,313 @@ def main():
     elif st.session_state.step == 2:
         step_2_upload_data()
     elif st.session_state.step == 3:
-        step_3_specify_interactions()
+        step_3_specify_learner()
     elif st.session_state.step == 4:
-        step_4_run_analysis()
+        step_4_specify_interactions()
     elif st.session_state.step == 5:
-        step_5_view_results()
+        step_5_fit_models()
+    elif st.session_state.step == 6:
+        step_6_sensitivity_analysis()
+    elif st.session_state.step == 7:
+        step_7_select_robust_interactions()
 
+
+def get_workflow_diagram_html():
+    """Generate interactive HTML workflow diagram with hover tooltips"""
+    html = """
+    <style>
+        .workflow-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            position: relative;
+        }
+
+        .workflow-box {
+            background: white;
+            border: 3px solid #333;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.3s ease;
+            z-index: 1;
+        }
+
+        .workflow-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 100;
+        }
+
+        .workflow-main-section {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border: 3px solid #333;
+            border-radius: 20px;
+            padding: 30px 20px;
+            margin: 15px 0;
+            position: relative;
+        }
+
+        .workflow-step {
+            background: linear-gradient(135deg, #4a5f3a 0%, #5d7647 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 18px;
+            margin: 12px 0;
+            font-size: 17px;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        .workflow-step:hover {
+            transform: translateX(5px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            background: linear-gradient(135deg, #5d7647 0%, #6d8657 100%);
+            z-index: 100;
+        }
+
+        .arrow-container {
+            text-align: center;
+            font-size: 24px;
+            color: #666;
+            margin: 5px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .arrow-down {
+            font-size: 30px;
+        }
+
+        .arrow-up {
+            font-size: 30px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: normal;
+            width: 400px;
+            z-index: 10000;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            line-height: 1.6;
+            text-align: left;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.2);
+            left: 110%;
+            top: 0;
+            white-space: normal;
+        }
+
+        .workflow-step:hover .tooltip,
+        .workflow-box:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Position tooltip to the left if it would overflow */
+        @media (max-width: 1200px) {
+            .tooltip {
+                left: auto;
+                right: 110%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .workflow-container {
+                padding: 10px;
+            }
+            .workflow-box {
+                font-size: 16px;
+                padding: 15px;
+            }
+            .workflow-step {
+                font-size: 15px;
+                padding: 15px;
+            }
+            .tooltip {
+                width: 90vw;
+                font-size: 12px;
+                padding: 12px 15px;
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+                top: 100%;
+                margin-top: 10px;
+            }
+            .arrow-container {
+                font-size: 20px;
+            }
+        }
+    </style>
+
+    <div class="workflow-container">
+        <!-- Top Box -->
+        <div class="workflow-box">
+            Identify Phenomenon & Target Theory
+            <div class="tooltip">
+                Before starting with Step 1, it is crucial to narrow the scope of inquiry to a specific organizational phenomenon and establish a related theoretical framework to be elaborated.
+            </div>
+        </div>
+
+        <div class="arrow-container">
+            <span class="arrow-down">↓</span>
+        </div>
+
+        <!-- Main Section -->
+        <div class="workflow-main-section">
+            <div class="workflow-step">
+                1. Encode Existing Knowledge into DAG
+                <div class="tooltip">
+                    In Step 1, researchers encode the existing state of the literature with respect to causal relationships into a DAG.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                2. Collect and Pre-Process Data
+                <div class="tooltip">
+                    In Step 2, relevant data is collected and pre-processed, including, for example, the construction of dummy variables for categorical measures. Where feasible, researchers should document measurement choices and missing-data handling to preserve transparency and replicability.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                3. Specify Learners (e.g., LASSO)
+                <div class="tooltip">
+                    Step 3 involves selecting appropriate ML estimators—such as LASSO regression—to separate the effect of the variable of interest from those of the control variables.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                4. Specify Interactions of Interest
+                <div class="tooltip">
+                    In Step 4, interaction terms are specified based on their relevance in the context of the investigated phenomenon and target theory.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                5. Fit Treatment & Outcome Models
+                <div class="tooltip">
+                    In Step 5, the treatment and outcome models are trained, which involves parameter tuning and cross validation to ensure robust and accurate estimation of treatment effects.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                6. Perform Sensitivity Analysis
+                <div class="tooltip">
+                    Step 6 uses sensitivity analysis to evaluate the robustness of the causal estimates by examining the impact of unobserved confounders, ensuring confidence in the derived conclusions.
+                </div>
+            </div>
+
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
+
+            <div class="workflow-step">
+                7. Select Robust Interactions
+                <div class="tooltip">
+                    Step 7 involves selecting the interaction terms that robustly appear significant. Taken together, these steps yield a disciplined pipeline that expands discovery while maintaining identification discipline and inferential validity.
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow-container">
+            <span class="arrow-down">↓</span>
+        </div>
+
+        <!-- Bottom Box -->
+        <div class="workflow-box">
+            Formulate Implications for Theory and Practice
+            <div class="tooltip">
+                After completing all seven steps, researchers can formulate implications for both theory and practice based on the robust findings from the graph-based DML analysis.
+            </div>
+        </div>
+    </div>
+    """
+    return html
 
 def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
-    st.header("📚 Workflow Overview: Graph-Based Double Machine Learning")
 
-    # Display logo at the top
+    # Display logo at the very top with fixed width (50% bigger than before: 600px)
     try:
-        st.image("Logo.png", use_container_width=True)
+        st.image("Logo.png", width=600)
     except Exception:
         pass  # If logo not found, continue without it
+
+    # Description below logo
+    st.markdown("""
+    This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
+    Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
+    """)
+
+    st.markdown("---")
 
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
 
-    **Graph-Based Double Machine Learning** is a powerful methodology that combines:
-    - **Directed Acyclic Graphs (DAGs)** to represent causal assumptions
-    - **Double Machine Learning (DML)** to handle high-dimensional settings
-    - **Interaction term exploration** to discover heterogeneous effects
+    **Graph-Based Double Machine Learning** is a framework that combines:
+    - **Directed Acyclic Graphs (DAGs)** to represent causal assumptions and avoid bad controls
+    - **Double Machine Learning (DML)** to handle high-dimensional data (i.e., many covariates)
 
-    This approach enables you to **robustly explore and estimate interaction effects** without
-    the limitations of traditional regression that requires pre-selecting a small subset of interactions.
+    to **robustly estimate effect heterogeneity** across a large set of variables.
 
-    ---
-
-    ### The Workflow
-
-    This tool guides you through a systematic 7-step process:
+    This approach enables you to explore **interaction effects** without the limitations of traditional
+    regression (ordinary least squares) that requires pre-selecting a subset of interactions.
     """)
-
-    # Display workflow steps
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        st.markdown("""
-        #### Steps:
-        1. **Build Causal DAG**
-        2. **Upload Data**
-        3. **Specify Interactions**
-        4. **Run DML Analysis**
-        5. **View Results**
-        """)
-
-    with col2:
-        st.markdown("""
-        #### What Happens:
-        - Define treatment & outcome, add variables to DAG with types
-        - Load your CSV dataset matching DAG variables
-        - **Select variables for interaction term construction**
-        - Estimate effects using DML with LASSO
-        - Review main and interaction effects with significance
-        """)
 
     st.markdown("---")
 
-    # Workflow diagram (using image)
-    st.subheader("🔄 Visual Workflow")
+    # Interactive workflow diagram
+    st.subheader("🔄 Visual Overview of the Workflow")
+    st.markdown("*Hover over each box to see detailed explanations*")
 
-    try:
-        st.image("Workflow_Diagram.png", use_container_width=True)
-    except Exception:
-        # Fallback to text-based representation if image not found
-        st.markdown("""
-        ```
-        ┌─────────────────────────────────────────────────────┐
-        │                                                     │
-        │   Identify Phenomenon & Target Theory              │
-        │                                                     │
-        └────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-        ┌─────────────────────────────────────────────────────┐
-        │  GRAPH-BASED DOUBLE MACHINE LEARNING                │
-        │                                                     │
-        │  1. Encode Existing Knowledge into DAG              │
-        │  2. Collect and Pre-Process Data                    │
-        │  3. Specify Learners (e.g., LASSO)                 │
-        │  4. Specify Interactions of Interest   ◄────────┐  │
-        │  5. Fit Treatment & Outcome Models                  │
-        │  6. Perform Sensitivity Analysis                    │
-        │  7. Select Robust Interactions                      │
-        │                                                     │
-        └────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-        ┌─────────────────────────────────────────────────────┐
-        │                                                     │
-        │   Formulate Implications for Theory and Practice    │
-        │                                                     │
-        └─────────────────────────────────────────────────────┘
-        ```
-        """)
+    # Display interactive HTML workflow diagram
+    import streamlit.components.v1 as components
+    components.html(get_workflow_diagram_html(), height=1200, scrolling=False)
 
     st.markdown("---")
 
@@ -271,7 +482,7 @@ def step_0_workflow_overview():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("➡️ Start Analysis", type="primary", use_container_width=True):
+        if st.button("➡️ Start Analysis", type="primary", width="stretch"):
             st.session_state.step = 1
             st.rerun()
 
@@ -293,12 +504,12 @@ def step_1_build_dag():
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("📝 Paste DAG Syntax", use_container_width=True, type="secondary"):
+            if st.button("📝 Paste DAG Syntax", width="stretch", type="secondary"):
                 st.session_state.dag_creation_method = "paste"
                 st.rerun()
 
         with col2:
-            if st.button("🔨 Build DAG Step-by-Step", use_container_width=True, type="primary"):
+            if st.button("🔨 Build DAG Step-by-Step", width="stretch", type="primary"):
                 st.session_state.dag_creation_method = "build"
                 st.rerun()
 
@@ -476,7 +687,7 @@ def step_1_paste_dag():
             st.markdown("---")
 
             # Save configuration button
-            if st.button("✅ Confirm DAG Configuration", type="primary", use_container_width=True):
+            if st.button("✅ Confirm DAG Configuration", type="primary", width="stretch"):
                 st.session_state.dag = dag
                 st.session_state.treatment = treatment
                 st.session_state.outcome = outcome
@@ -497,12 +708,12 @@ def step_1_paste_dag():
                          "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
                         for var, config in variables_config.items()
                     ])
-                    st.dataframe(var_df, use_container_width=True)
+                    st.dataframe(var_df, width="stretch")
 
                 # Navigation button
                 col1, col2, col3 = st.columns([1, 1, 1])
                 with col3:
-                    if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                    if st.button("➡️ Proceed to Upload Data", type="primary", width="stretch"):
                         st.session_state.step = 2
                         st.rerun()
 
@@ -554,12 +765,12 @@ def step_1_build_dag_interactive():
                      "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
                     for var, config in variables_config.items()
                 ])
-                st.dataframe(var_df, use_container_width=True)
+                st.dataframe(var_df, width="stretch")
 
             # Navigation buttons
             col1, col2, col3 = st.columns([1, 1, 1])
             with col3:
-                if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                if st.button("➡️ Proceed to Upload Data", type="primary", width="stretch"):
                     st.session_state.step = 2
                     st.rerun()
         else:
@@ -638,26 +849,69 @@ def step_2_upload_data():
         st.success(f"✅ Data processed successfully! Shape: {data.shape} | Columns used: {len(matched_cols)}")
 
         with st.expander("📊 Data Preview", expanded=True):
-            st.dataframe(data.head(20), use_container_width=True)
+            st.dataframe(data.head(20), width="stretch")
 
         with st.expander("📈 Basic Statistics"):
-            st.dataframe(data.describe(), use_container_width=True)
+            st.dataframe(data.describe(), width="stretch")
 
         # Button to proceed
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to DAG", use_container_width=True):
+            if st.button("⬅️ Back to DAG", width="stretch"):
                 st.session_state.step = 1
                 st.rerun()
         with col3:
-            if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Specify Learner", type="primary", width="stretch"):
                 st.session_state.step = 3
                 st.rerun()
 
 
-def step_3_specify_interactions():
-    """Step 3: Specify which variables to use for interaction terms"""
-    st.header("Step 3: Specify Interactions of Interest")
+def step_3_specify_learner():
+    """Step 3: Specify Learner"""
+    st.header("Step 3: Specify Learner")
+
+    st.markdown("""
+    Within the DML framework, the researcher is free to choose what type of
+    model and estimator to use. To provide an accessible introduction to the algorithm-supported
+    abduction process, we choose a **partially linear model** in combination with a **LASSO regression
+    algorithm** for both the outcome and the treatment models.
+
+    ### What are Partially Linear Models?
+
+    Partially linear models are a class of statistical
+    models that blend the interpretability of parametric components with the flexibility of nonparametric
+    methods. The parametric portion provides straightforward interpretability, akin to OLS coefficients,
+    while the nonparametric component does not assume any specific functional form and therefore allows
+    for capturing nonlinear relationships.
+
+    ### Why LASSO for DML?
+
+    Partially linear models are designed to separate the causal effect
+    of interest from those of the control variables, which are estimated flexibly using a combination of
+    regularization and orthogonalization. This reduces model misspecification risk while ensuring
+    robustness to complex confounding structures. This setup balances theoretical transparency and
+    computational flexibility, making it well suited for exploratory causal inference in organizational data.
+    """)
+
+    st.warning("""
+    **Disclaimer:** Currently, we only support LASSO models. Future models will be added at a later stage.
+    """)
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Upload Data", width="stretch"):
+            st.session_state.step = 2
+            st.rerun()
+    with col3:
+        if st.button("➡️ Proceed to Specify Interactions", type="primary", width="stretch"):
+            st.session_state.step = 4
+            st.rerun()
+
+
+def step_4_specify_interactions():
+    """Step 4: Specify which variables to use for interaction terms"""
+    st.header("Step 4: Specify Interactions of Interest")
 
     if st.session_state.dag is None:
         st.warning("⚠️ Please create a DAG first (Step 3)")
@@ -846,22 +1100,22 @@ def step_3_specify_interactions():
     # Navigation buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Upload Data", use_container_width=True):
-            st.session_state.step = 2
+        if st.button("⬅️ Back to Specify Learner", width="stretch"):
+            st.session_state.step = 3
             st.rerun()
     with col3:
         if can_proceed:
-            if st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True):
-                st.session_state.step = 4
+            if st.button("➡️ Proceed to Fit Models", type="primary", width="stretch"):
+                st.session_state.step = 5
                 st.rerun()
         else:
-            st.button("➡️ Proceed to Run Analysis", type="primary", use_container_width=True, disabled=True)
+            st.button("➡️ Proceed to Fit Models", type="primary", width="stretch", disabled=True)
             st.warning("⚠️ Please select at least one variable for two-way interactions to proceed.")
 
 
-def step_4_run_analysis():
-    """Step 4: Run DML analysis"""
-    st.header("Step 4: Run DML Analysis")
+def step_5_fit_models():
+    """Step 5: Fit Treatment & Outcome Models"""
+    st.header("Step 5: Fit Treatment & Outcome Models")
 
     if st.session_state.treatment is None or st.session_state.outcome is None:
         st.warning("⚠️ Please build your DAG with treatment and outcome (Step 1)")
@@ -925,7 +1179,7 @@ def step_4_run_analysis():
                 st.caption(f"  → Will create {len(unique_values) - 1} dummy variables (dropping '{selected_value}')")
 
             st.markdown("---")
-            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", width="stretch")
 
             if submitted:
                 # Store selections in session state
@@ -935,8 +1189,8 @@ def step_4_run_analysis():
                 st.rerun()
 
         # Show back button
-        if st.button("⬅️ Back to Interactions", use_container_width=True):
-            st.session_state.step = 3
+        if st.button("⬅️ Back to Interactions", width="stretch"):
+            st.session_state.step = 4
             st.rerun()
 
         return  # Don't show the rest of Step 4 until user confirms
@@ -1094,7 +1348,7 @@ def step_4_run_analysis():
     st.markdown("---")
 
     # Run analysis button
-    if st.button("🚀 Run DML Analysis", type="primary", use_container_width=True):
+    if st.button("🚀 Run DML Analysis", type="primary", width="stretch"):
         try:
             # Create progress bar and status message placeholders
             progress_bar = st.progress(0)
@@ -1130,173 +1384,254 @@ def step_4_run_analysis():
             # Clear progress indicators and show success
             progress_bar.empty()
             status_text.empty()
-            st.success("✅ Analysis complete!")
+            st.success("✅ Analysis complete! Proceed to the next step to view results.")
             st.rerun()
 
         except Exception as e:
             st.error(f"❌ Analysis failed: {str(e)}")
             st.exception(e)
 
-    # Display results directly if available (following Sample_Analysis.ipynb)
+    # If analysis is complete, show option to proceed
     if st.session_state.results is not None:
-        results = st.session_state.results
-
         st.markdown("---")
-        st.markdown("### 📊 DML Estimation Results")
-        st.markdown("""
-        Comprehensive results table showing all treatment effects.
-        Click column headers to sort. Use filters below to refine the view.
-        """)
-
-        # Display the comprehensive results dataframe
-        if results.get('detailed_results_df') is not None:
-            detailed_df = results['detailed_results_df']
-
-            # Display metrics for summary
-            total_treatments = len(detailed_df)
-            sig_1pct = detailed_df['sig_1pct'].sum()
-            sig_5pct = detailed_df['sig_5pct'].sum()
-            sig_10pct = detailed_df['sig_10pct'].sum()
-
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Treatments", total_treatments)
-            with col2:
-                st.metric("Sig. at 1%", sig_1pct)
-            with col3:
-                st.metric("Sig. at 5%", sig_5pct)
-            with col4:
-                st.metric("Sig. at 10%", sig_10pct)
-
-            # Add filtering options
-            st.markdown("#### Filters")
-            filter_col1, filter_col2, filter_col3 = st.columns(3)
-
-            with filter_col1:
-                significance_filter = st.selectbox(
-                    "Significance Level",
-                    options=["All", "p < 0.01", "p < 0.05", "p < 0.10", "Not Significant"],
-                    index=0,
-                    key="step4_sig_filter"
-                )
-
-            with filter_col2:
-                sort_column = st.selectbox(
-                    "Sort By",
-                    options=["p_value", "coefficient", "std_error", "t_statistic", "treatment"],
-                    index=0,
-                    key="step4_sort_col"
-                )
-
-            with filter_col3:
-                sort_order = st.radio(
-                    "Sort Order",
-                    options=["Ascending", "Descending"],
-                    index=0 if sort_column == "p_value" else 1,
-                    horizontal=True,
-                    key="step4_sort_order"
-                )
-
-            # Apply filters
-            filtered_df = detailed_df.copy()
-
-            if significance_filter == "p < 0.01":
-                filtered_df = filtered_df[filtered_df['sig_1pct']]
-            elif significance_filter == "p < 0.05":
-                filtered_df = filtered_df[filtered_df['sig_5pct']]
-            elif significance_filter == "p < 0.10":
-                filtered_df = filtered_df[filtered_df['sig_10pct']]
-            elif significance_filter == "Not Significant":
-                filtered_df = filtered_df[~filtered_df['sig_10pct']]
-
-            # Apply sorting
-            ascending = (sort_order == "Ascending")
-            filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
-
-            # Reset index for display
-            filtered_df = filtered_df.reset_index(drop=True)
-
-            # Display the detailed dataframe
-            st.markdown(f"#### Results Table ({len(filtered_df)} of {len(detailed_df)} rows)")
-
-            # Create a formatted display dataframe
-            display_df = filtered_df.copy()
-
-            # Add significance stars column first
-            def add_stars(row):
-                if row['sig_1pct']:
-                    return '***'
-                elif row['sig_5pct']:
-                    return '**'
-                elif row['sig_10pct']:
-                    return '*'
-                else:
-                    return ''
-
-            display_df.insert(0, 'sig', filtered_df.apply(add_stars, axis=1))
-
-            # Reorder columns for better readability
-            column_order = ['sig', 'treatment', 'coefficient', 'std_error', 't_statistic', 'p_value',
-                           'ci_lower_95', 'ci_upper_95', 'sig_1pct', 'sig_5pct', 'sig_10pct']
-            display_df = display_df[column_order]
-
-            # Rename columns for better display
-            display_df = display_df.rename(columns={
-                'sig': 'Sig.',
-                'treatment': 'Treatment',
-                'coefficient': 'Coefficient',
-                'std_error': 'Std Error',
-                't_statistic': 't-Statistic',
-                'p_value': 'P-Value',
-                'ci_lower_95': 'CI Lower (95%)',
-                'ci_upper_95': 'CI Upper (95%)',
-                'sig_1pct': 'p<0.01',
-                'sig_5pct': 'p<0.05',
-                'sig_10pct': 'p<0.10'
-            })
-
-            # Display with interactive dataframe
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                height=500,
-                column_config={
-                    "Sig.": st.column_config.TextColumn(width="small"),
-                    "Treatment": st.column_config.TextColumn(width="large"),
-                    "Coefficient": st.column_config.NumberColumn(format="%.6f"),
-                    "Std Error": st.column_config.NumberColumn(format="%.6f"),
-                    "t-Statistic": st.column_config.NumberColumn(format="%.4f"),
-                    "P-Value": st.column_config.NumberColumn(format="%.6f"),
-                    "CI Lower (95%)": st.column_config.NumberColumn(format="%.6f"),
-                    "CI Upper (95%)": st.column_config.NumberColumn(format="%.6f"),
-                    "p<0.01": st.column_config.CheckboxColumn(),
-                    "p<0.05": st.column_config.CheckboxColumn(),
-                    "p<0.10": st.column_config.CheckboxColumn()
-                }
-            )
-
-            st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
-
-            # Add download button for filtered results
-            csv_data = filtered_df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download Filtered Results (CSV)",
-                data=csv_data,
-                file_name="dml_results_filtered.csv",
-                mime="text/csv",
-                key="step4_download"
-            )
+        st.success("✅ Model fitting complete! The treatment and outcome models have been trained.")
+        st.info("Click 'Proceed to Sensitivity Analysis' to continue with the workflow.")
 
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Interactions", use_container_width=True):
-            st.session_state.step = 3
+        if st.button("⬅️ Back to Interactions", width="stretch"):
+            st.session_state.step = 4
+            st.rerun()
+    with col3:
+        if st.session_state.results is not None:
+            if st.button("➡️ Proceed to Sensitivity Analysis", type="primary", width="stretch"):
+                st.session_state.step = 6
+                st.rerun()
+        else:
+            st.button("➡️ Proceed to Sensitivity Analysis", type="primary", width="stretch", disabled=True)
+
+
+def step_6_sensitivity_analysis():
+    """Step 6: Perform Sensitivity Analysis"""
+    st.header("Step 6: Perform Sensitivity Analysis")
+
+    st.markdown("""
+    Sensitivity analysis evaluates the robustness of causal estimates by examining the impact of
+    unobserved confounders, ensuring confidence in the derived conclusions.
+
+    This step helps researchers understand how sensitive their findings are to potential violations
+    of the ignorability assumption and provides bounds on the treatment effects under various scenarios.
+    """)
+
+    st.warning("""
+    **Disclaimer:** Sensitivity analysis functionality will be added at a later stage.
+
+    For now, you can proceed to view the robust interaction results in the next step.
+    """)
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Fit Models", width="stretch"):
+            st.session_state.step = 5
+            st.rerun()
+    with col3:
+        if st.session_state.results is not None:
+            if st.button("➡️ Proceed to Select Robust Interactions", type="primary", width="stretch"):
+                st.session_state.step = 7
+                st.rerun()
+        else:
+            st.button("➡️ Proceed to Select Robust Interactions", type="primary", width="stretch", disabled=True)
+            st.warning("⚠️ Please run the analysis in Step 5 first.")
+
+
+def step_7_select_robust_interactions():
+    """Step 7: Select Robust Interactions"""
+    st.header("Step 7: Select Robust Interactions")
+
+    if st.session_state.results is None:
+        st.warning("⚠️ Please run the analysis in Step 5 first.")
+        # Navigation
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            if st.button("⬅️ Back to Sensitivity Analysis", width="stretch"):
+                st.session_state.step = 6
+                st.rerun()
+        return
+
+    results = st.session_state.results
+
+    st.markdown("""
+    This step involves selecting the interaction terms that robustly appear significant.
+    The table below shows comprehensive results for all treatment effects including main effects
+    and interaction terms.
+
+    Use the filters to identify significant interactions and download the results for further analysis.
+    """)
+
+    st.markdown("---")
+    st.markdown("### 📊 DML Estimation Results")
+    st.markdown("""
+    Comprehensive results table showing all treatment effects.
+    Click column headers to sort. Use filters below to refine the view.
+    """)
+
+    # Display the comprehensive results dataframe
+    if results.get('detailed_results_df') is not None:
+        detailed_df = results['detailed_results_df']
+
+        # Display metrics for summary
+        total_treatments = len(detailed_df)
+        sig_1pct = detailed_df['sig_1pct'].sum()
+        sig_5pct = detailed_df['sig_5pct'].sum()
+        sig_10pct = detailed_df['sig_10pct'].sum()
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Treatments", total_treatments)
+        with col2:
+            st.metric("Sig. at 1%", sig_1pct)
+        with col3:
+            st.metric("Sig. at 5%", sig_5pct)
+        with col4:
+            st.metric("Sig. at 10%", sig_10pct)
+
+        # Add filtering options
+        st.markdown("#### Filters")
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+
+        with filter_col1:
+            significance_filter = st.selectbox(
+                "Significance Level",
+                options=["All", "p < 0.01", "p < 0.05", "p < 0.10", "Not Significant"],
+                index=0,
+                key="step7_sig_filter"
+            )
+
+        with filter_col2:
+            sort_column = st.selectbox(
+                "Sort By",
+                options=["p_value", "coefficient", "std_error", "t_statistic", "treatment"],
+                index=0,
+                key="step7_sort_col"
+            )
+
+        with filter_col3:
+            sort_order = st.radio(
+                "Sort Order",
+                options=["Ascending", "Descending"],
+                index=0 if sort_column == "p_value" else 1,
+                horizontal=True,
+                key="step7_sort_order"
+            )
+
+        # Apply filters
+        filtered_df = detailed_df.copy()
+
+        if significance_filter == "p < 0.01":
+            filtered_df = filtered_df[filtered_df['sig_1pct']]
+        elif significance_filter == "p < 0.05":
+            filtered_df = filtered_df[filtered_df['sig_5pct']]
+        elif significance_filter == "p < 0.10":
+            filtered_df = filtered_df[filtered_df['sig_10pct']]
+        elif significance_filter == "Not Significant":
+            filtered_df = filtered_df[~filtered_df['sig_10pct']]
+
+        # Apply sorting
+        ascending = (sort_order == "Ascending")
+        filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
+
+        # Reset index for display
+        filtered_df = filtered_df.reset_index(drop=True)
+
+        # Display the detailed dataframe
+        st.markdown(f"#### Results Table ({len(filtered_df)} of {len(detailed_df)} rows)")
+
+        # Create a formatted display dataframe
+        display_df = filtered_df.copy()
+
+        # Add significance stars column first
+        def add_stars(row):
+            if row['sig_1pct']:
+                return '***'
+            elif row['sig_5pct']:
+                return '**'
+            elif row['sig_10pct']:
+                return '*'
+            else:
+                return ''
+
+        display_df.insert(0, 'sig', filtered_df.apply(add_stars, axis=1))
+
+        # Reorder columns for better readability
+        column_order = ['sig', 'treatment', 'coefficient', 'std_error', 't_statistic', 'p_value',
+                       'ci_lower_95', 'ci_upper_95', 'sig_1pct', 'sig_5pct', 'sig_10pct']
+        display_df = display_df[column_order]
+
+        # Rename columns for better display
+        display_df = display_df.rename(columns={
+            'sig': 'Sig.',
+            'treatment': 'Treatment',
+            'coefficient': 'Coefficient',
+            'std_error': 'Std Error',
+            't_statistic': 't-Statistic',
+            'p_value': 'P-Value',
+            'ci_lower_95': 'CI Lower (95%)',
+            'ci_upper_95': 'CI Upper (95%)',
+            'sig_1pct': 'p<0.01',
+            'sig_5pct': 'p<0.05',
+            'sig_10pct': 'p<0.10'
+        })
+
+        # Display with interactive dataframe
+        st.dataframe(
+            display_df,
+            width="stretch",
+            height=500,
+            column_config={
+                "Sig.": st.column_config.TextColumn(width="small"),
+                "Treatment": st.column_config.TextColumn(width="large"),
+                "Coefficient": st.column_config.NumberColumn(format="%.6f"),
+                "Std Error": st.column_config.NumberColumn(format="%.6f"),
+                "t-Statistic": st.column_config.NumberColumn(format="%.4f"),
+                "P-Value": st.column_config.NumberColumn(format="%.6f"),
+                "CI Lower (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "CI Upper (95%)": st.column_config.NumberColumn(format="%.6f"),
+                "p<0.01": st.column_config.CheckboxColumn(),
+                "p<0.05": st.column_config.CheckboxColumn(),
+                "p<0.10": st.column_config.CheckboxColumn()
+            }
+        )
+
+        st.caption("Significance levels: *** p<0.01, ** p<0.05, * p<0.10")
+
+        # Add download button for filtered results
+        csv_data = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Results (CSV)",
+            data=csv_data,
+            file_name="dml_results_filtered.csv",
+            mime="text/csv",
+            key="step7_download"
+        )
+
+    # Navigation
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ Back to Sensitivity Analysis", width="stretch"):
+            st.session_state.step = 6
+            st.rerun()
+    with col2:
+        if st.button("🔄 Start New Analysis", width="stretch"):
+            # Reset session state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
 
 def step_5_view_results():
-    """Step 5: View results and visualizations"""
+    """Step 5: View results and visualizations (DEPRECATED - kept for backward compatibility)"""
     st.header("Step 5: Results")
 
     if st.session_state.results is None:
@@ -1455,7 +1790,7 @@ def step_5_view_results():
         # Display with interactive dataframe
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             height=500,
             column_config={
                 "Sig.": st.column_config.TextColumn(width="small"),
@@ -1549,7 +1884,7 @@ def step_5_view_results():
                     'CI Lower': f"{r.get('ci_lower_95', r.get('ci_lower', 0)):.3f}",
                     'CI Upper': f"{r.get('ci_upper_95', r.get('ci_upper', 0)):.3f}"
                 } for r in non_significant])
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(df, width="stretch")
 
         # Export interaction results
         st.markdown("#### 💾 Export Interaction Results")
@@ -1596,11 +1931,11 @@ def step_5_view_results():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Analysis", use_container_width=True):
+        if st.button("⬅️ Back to Analysis", width="stretch"):
             st.session_state.step = 4
             st.rerun()
     with col2:
-        if st.button("🔄 Start New Analysis", use_container_width=True):
+        if st.button("🔄 Start New Analysis", width="stretch"):
             # Reset session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
