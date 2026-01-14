@@ -482,7 +482,7 @@ def step_0_workflow_overview():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("➡️ Start Analysis", type="primary", use_container_width=True):
+        if st.button("➡️ Start Analysis", type="primary", width="stretch"):
             st.session_state.step = 1
             st.rerun()
 
@@ -504,12 +504,12 @@ def step_1_build_dag():
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("📝 Paste DAG Syntax", use_container_width=True, type="secondary"):
+            if st.button("📝 Paste DAG Syntax", width="stretch", type="secondary"):
                 st.session_state.dag_creation_method = "paste"
                 st.rerun()
 
         with col2:
-            if st.button("🔨 Build DAG Step-by-Step", use_container_width=True, type="primary"):
+            if st.button("🔨 Build DAG Step-by-Step", width="stretch", type="primary"):
                 st.session_state.dag_creation_method = "build"
                 st.rerun()
 
@@ -687,7 +687,7 @@ def step_1_paste_dag():
             st.markdown("---")
 
             # Save configuration button
-            if st.button("✅ Confirm DAG Configuration", type="primary", use_container_width=True):
+            if st.button("✅ Confirm DAG Configuration", type="primary", width="stretch"):
                 st.session_state.dag = dag
                 st.session_state.treatment = treatment
                 st.session_state.outcome = outcome
@@ -708,12 +708,12 @@ def step_1_paste_dag():
                          "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
                         for var, config in variables_config.items()
                     ])
-                    st.dataframe(var_df, use_container_width=True)
+                    st.dataframe(var_df, width="stretch")
 
                 # Navigation button
                 col1, col2, col3 = st.columns([1, 1, 1])
                 with col3:
-                    if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                    if st.button("➡️ Proceed to Upload Data", type="primary", width="stretch"):
                         st.session_state.step = 2
                         st.rerun()
 
@@ -765,12 +765,12 @@ def step_1_build_dag_interactive():
                      "Role": "Treatment" if var == treatment else ("Outcome" if var == outcome else "Covariate")}
                     for var, config in variables_config.items()
                 ])
-                st.dataframe(var_df, use_container_width=True)
+                st.dataframe(var_df, width="stretch")
 
             # Navigation buttons
             col1, col2, col3 = st.columns([1, 1, 1])
             with col3:
-                if st.button("➡️ Proceed to Upload Data", type="primary", use_container_width=True):
+                if st.button("➡️ Proceed to Upload Data", type="primary", width="stretch"):
                     st.session_state.step = 2
                     st.rerun()
         else:
@@ -849,19 +849,19 @@ def step_2_upload_data():
         st.success(f"✅ Data processed successfully! Shape: {data.shape} | Columns used: {len(matched_cols)}")
 
         with st.expander("📊 Data Preview", expanded=True):
-            st.dataframe(data.head(20), use_container_width=True)
+            st.dataframe(data.head(20), width="stretch")
 
         with st.expander("📈 Basic Statistics"):
-            st.dataframe(data.describe(), use_container_width=True)
+            st.dataframe(data.describe(), width="stretch")
 
         # Button to proceed
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to DAG", use_container_width=True):
+            if st.button("⬅️ Back to DAG", width="stretch"):
                 st.session_state.step = 1
                 st.rerun()
         with col3:
-            if st.button("➡️ Proceed to Specify Learner", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Specify Learner", type="primary", width="stretch"):
                 st.session_state.step = 3
                 st.rerun()
 
@@ -900,11 +900,11 @@ def step_3_specify_learner():
     # Navigation buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Upload Data", use_container_width=True):
+        if st.button("⬅️ Back to Upload Data", width="stretch"):
             st.session_state.step = 2
             st.rerun()
     with col3:
-        if st.button("➡️ Proceed to Specify Interactions", type="primary", use_container_width=True):
+        if st.button("➡️ Proceed to Specify Interactions", type="primary", width="stretch"):
             st.session_state.step = 4
             st.rerun()
 
@@ -1100,16 +1100,16 @@ def step_4_specify_interactions():
     # Navigation buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Specify Learner", use_container_width=True):
+        if st.button("⬅️ Back to Specify Learner", width="stretch"):
             st.session_state.step = 3
             st.rerun()
     with col3:
         if can_proceed:
-            if st.button("➡️ Proceed to Fit Models", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Fit Models", type="primary", width="stretch"):
                 st.session_state.step = 5
                 st.rerun()
         else:
-            st.button("➡️ Proceed to Fit Models", type="primary", use_container_width=True, disabled=True)
+            st.button("➡️ Proceed to Fit Models", type="primary", width="stretch", disabled=True)
             st.warning("⚠️ Please select at least one variable for two-way interactions to proceed.")
 
 
@@ -1179,7 +1179,7 @@ def step_5_fit_models():
                 st.caption(f"  → Will create {len(unique_values) - 1} dummy variables (dropping '{selected_value}')")
 
             st.markdown("---")
-            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("✅ Confirm Reference Categories", type="primary", width="stretch")
 
             if submitted:
                 # Store selections in session state
@@ -1189,7 +1189,7 @@ def step_5_fit_models():
                 st.rerun()
 
         # Show back button
-        if st.button("⬅️ Back to Interactions", use_container_width=True):
+        if st.button("⬅️ Back to Interactions", width="stretch"):
             st.session_state.step = 4
             st.rerun()
 
@@ -1348,7 +1348,7 @@ def step_5_fit_models():
     st.markdown("---")
 
     # Run analysis button
-    if st.button("🚀 Run DML Analysis", type="primary", use_container_width=True):
+    if st.button("🚀 Run DML Analysis", type="primary", width="stretch"):
         try:
             # Create progress bar and status message placeholders
             progress_bar = st.progress(0)
@@ -1400,16 +1400,16 @@ def step_5_fit_models():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Interactions", use_container_width=True):
+        if st.button("⬅️ Back to Interactions", width="stretch"):
             st.session_state.step = 4
             st.rerun()
     with col3:
         if st.session_state.results is not None:
-            if st.button("➡️ Proceed to Sensitivity Analysis", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Sensitivity Analysis", type="primary", width="stretch"):
                 st.session_state.step = 6
                 st.rerun()
         else:
-            st.button("➡️ Proceed to Sensitivity Analysis", type="primary", use_container_width=True, disabled=True)
+            st.button("➡️ Proceed to Sensitivity Analysis", type="primary", width="stretch", disabled=True)
 
 
 def step_6_sensitivity_analysis():
@@ -1433,16 +1433,16 @@ def step_6_sensitivity_analysis():
     # Navigation buttons
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Fit Models", use_container_width=True):
+        if st.button("⬅️ Back to Fit Models", width="stretch"):
             st.session_state.step = 5
             st.rerun()
     with col3:
         if st.session_state.results is not None:
-            if st.button("➡️ Proceed to Select Robust Interactions", type="primary", use_container_width=True):
+            if st.button("➡️ Proceed to Select Robust Interactions", type="primary", width="stretch"):
                 st.session_state.step = 7
                 st.rerun()
         else:
-            st.button("➡️ Proceed to Select Robust Interactions", type="primary", use_container_width=True, disabled=True)
+            st.button("➡️ Proceed to Select Robust Interactions", type="primary", width="stretch", disabled=True)
             st.warning("⚠️ Please run the analysis in Step 5 first.")
 
 
@@ -1455,7 +1455,7 @@ def step_7_select_robust_interactions():
         # Navigation
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("⬅️ Back to Sensitivity Analysis", use_container_width=True):
+            if st.button("⬅️ Back to Sensitivity Analysis", width="stretch"):
                 st.session_state.step = 6
                 st.rerun()
         return
@@ -1587,7 +1587,7 @@ def step_7_select_robust_interactions():
         # Display with interactive dataframe
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             height=500,
             column_config={
                 "Sig.": st.column_config.TextColumn(width="small"),
@@ -1619,11 +1619,11 @@ def step_7_select_robust_interactions():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Sensitivity Analysis", use_container_width=True):
+        if st.button("⬅️ Back to Sensitivity Analysis", width="stretch"):
             st.session_state.step = 6
             st.rerun()
     with col2:
-        if st.button("🔄 Start New Analysis", use_container_width=True):
+        if st.button("🔄 Start New Analysis", width="stretch"):
             # Reset session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -1790,7 +1790,7 @@ def step_5_view_results():
         # Display with interactive dataframe
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             height=500,
             column_config={
                 "Sig.": st.column_config.TextColumn(width="small"),
@@ -1884,7 +1884,7 @@ def step_5_view_results():
                     'CI Lower': f"{r.get('ci_lower_95', r.get('ci_lower', 0)):.3f}",
                     'CI Upper': f"{r.get('ci_upper_95', r.get('ci_upper', 0)):.3f}"
                 } for r in non_significant])
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(df, width="stretch")
 
         # Export interaction results
         st.markdown("#### 💾 Export Interaction Results")
@@ -1931,11 +1931,11 @@ def step_5_view_results():
     # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("⬅️ Back to Analysis", use_container_width=True):
+        if st.button("⬅️ Back to Analysis", width="stretch"):
             st.session_state.step = 4
             st.rerun()
     with col2:
-        if st.button("🔄 Start New Analysis", use_container_width=True):
+        if st.button("🔄 Start New Analysis", width="stretch"):
             # Reset session state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
