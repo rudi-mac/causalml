@@ -57,6 +57,12 @@ def main():
 
     # Sidebar for navigation
     with st.sidebar:
+        # Small logo at the top of sidebar
+        try:
+            st.image("Logo.png", width=150)
+        except Exception:
+            pass  # If logo not found, continue without it
+
         st.header("Workflow Steps")
         step = st.radio(
             "Current Step:",
@@ -361,9 +367,9 @@ def get_workflow_diagram_html():
 def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
 
-    # Display logo at the very top with fixed width (1/3 of typical screen width ~400px)
+    # Display logo at the very top with fixed width (50% bigger than before: 600px)
     try:
-        st.image("Logo.png", width=400)
+        st.image("Logo.png", width=600)
     except Exception:
         pass  # If logo not found, continue without it
 
