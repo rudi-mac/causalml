@@ -55,8 +55,7 @@ if 'mediators' not in st.session_state:
 def main():
     """Main application flow"""
 
-    # Title and description
-    st.title("🔬 Graph-Based Double Machine Learning")
+    # Description only (no title - it's in the logo)
     st.markdown("""
     This tool enables you to discover **significant interaction effects** using **Graph-Based Double Machine Learning (DML)**.
     Define causal structures, select interactions of interest, and robustly estimate heterogeneous treatment effects.
@@ -191,27 +190,40 @@ def get_workflow_diagram_html():
         }
 
         .tooltip {
-            position: fixed;
+            position: absolute;
             background: rgba(0, 0, 0, 0.95);
             color: white;
             padding: 15px 20px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: normal;
-            max-width: 500px;
+            width: 400px;
             z-index: 10000;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.3s ease;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
             line-height: 1.6;
             text-align: left;
             box-shadow: 0 6px 20px rgba(0,0,0,0.5);
             border: 2px solid rgba(255,255,255,0.2);
+            left: 110%;
+            top: 0;
+            white-space: normal;
         }
 
         .workflow-step:hover .tooltip,
         .workflow-box:hover .tooltip {
             opacity: 1;
+            visibility: visible;
+        }
+
+        /* Position tooltip to the left if it would overflow */
+        @media (max-width: 1200px) {
+            .tooltip {
+                left: auto;
+                right: 110%;
+            }
         }
 
         @media (max-width: 768px) {
@@ -227,9 +239,14 @@ def get_workflow_diagram_html():
                 padding: 15px;
             }
             .tooltip {
-                max-width: 90vw;
+                width: 90vw;
                 font-size: 12px;
                 padding: 12px 15px;
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+                top: 100%;
+                margin-top: 10px;
             }
             .arrow-container {
                 font-size: 20px;
@@ -344,50 +361,17 @@ def get_workflow_diagram_html():
             </div>
         </div>
     </div>
-
-    <script>
-        // Position tooltips dynamically to ensure they're always visible
-        document.addEventListener('DOMContentLoaded', function() {
-            const workflowSteps = document.querySelectorAll('.workflow-step, .workflow-box');
-
-            workflowSteps.forEach(step => {
-                step.addEventListener('mouseenter', function(e) {
-                    const tooltip = this.querySelector('.tooltip');
-                    if (tooltip) {
-                        const rect = this.getBoundingClientRect();
-                        const tooltipRect = tooltip.getBoundingClientRect();
-
-                        // Position tooltip to the right of the viewport center
-                        tooltip.style.left = rect.right + 10 + 'px';
-                        tooltip.style.top = rect.top + 'px';
-
-                        // If tooltip goes off screen right, position to the left
-                        if (rect.right + tooltipRect.width + 20 > window.innerWidth) {
-                            tooltip.style.left = Math.max(10, rect.left - tooltipRect.width - 10) + 'px';
-                        }
-
-                        // Ensure tooltip doesn't go off screen top or bottom
-                        if (rect.top + tooltipRect.height > window.innerHeight) {
-                            tooltip.style.top = Math.max(10, window.innerHeight - tooltipRect.height - 10) + 'px';
-                        }
-                    }
-                });
-            });
-        });
-    </script>
     """
     return html
 
 def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
 
-    # Display logo at the very top, taking about 1/3 of horizontal space
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        try:
-            st.image("Logo.png", use_container_width=True)
-        except Exception:
-            pass  # If logo not found, continue without it
+    # Display logo at the very top with fixed width (1/3 of typical screen width ~400px)
+    try:
+        st.image("Logo.png", width=400)
+    except Exception:
+        pass  # If logo not found, continue without it
 
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
