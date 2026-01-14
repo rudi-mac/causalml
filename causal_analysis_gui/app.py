@@ -117,6 +117,7 @@ def get_workflow_diagram_html():
             margin: 0 auto;
             padding: 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            position: relative;
         }
 
         .workflow-box {
@@ -130,12 +131,14 @@ def get_workflow_diagram_html():
             font-weight: bold;
             position: relative;
             transition: all 0.3s ease;
+            z-index: 1;
         }
 
         .workflow-box:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 16px rgba(0,0,0,0.2);
             cursor: pointer;
+            z-index: 100;
         }
 
         .workflow-main-section {
@@ -144,14 +147,7 @@ def get_workflow_diagram_html():
             border-radius: 20px;
             padding: 30px 20px;
             margin: 15px 0;
-        }
-
-        .workflow-main-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: #2e7d32;
-            margin-bottom: 25px;
-            text-align: center;
+            position: relative;
         }
 
         .workflow-step {
@@ -165,40 +161,52 @@ def get_workflow_diagram_html():
             position: relative;
             transition: all 0.3s ease;
             cursor: pointer;
+            z-index: 1;
         }
 
         .workflow-step:hover {
             transform: translateX(5px);
             box-shadow: 0 6px 20px rgba(0,0,0,0.3);
             background: linear-gradient(135deg, #5d7647 0%, #6d8657 100%);
+            z-index: 100;
+        }
+
+        .arrow-container {
+            text-align: center;
+            font-size: 24px;
+            color: #666;
+            margin: 5px 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
         }
 
         .arrow-down {
-            text-align: center;
             font-size: 30px;
-            color: #666;
-            margin: 5px 0;
+        }
+
+        .arrow-up {
+            font-size: 30px;
         }
 
         .tooltip {
-            position: absolute;
+            position: fixed;
             background: rgba(0, 0, 0, 0.95);
             color: white;
-            padding: 15px;
+            padding: 15px 20px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: normal;
-            max-width: 600px;
-            z-index: 1000;
+            max-width: 500px;
+            z-index: 10000;
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.3s ease;
             line-height: 1.6;
             text-align: left;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            left: 50%;
-            transform: translateX(-50%);
-            margin-top: 10px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.2);
         }
 
         .workflow-step:hover .tooltip,
@@ -221,6 +229,10 @@ def get_workflow_diagram_html():
             .tooltip {
                 max-width: 90vw;
                 font-size: 12px;
+                padding: 12px 15px;
+            }
+            .arrow-container {
+                font-size: 20px;
             }
         }
     </style>
@@ -234,12 +246,12 @@ def get_workflow_diagram_html():
             </div>
         </div>
 
-        <div class="arrow-down">↓</div>
+        <div class="arrow-container">
+            <span class="arrow-down">↓</span>
+        </div>
 
         <!-- Main Section -->
         <div class="workflow-main-section">
-            <div class="workflow-main-title">Graph-Based Double Machine Learning</div>
-
             <div class="workflow-step">
                 1. Encode Existing Knowledge into DAG
                 <div class="tooltip">
@@ -247,7 +259,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 2. Collect and Pre-Process Data
@@ -256,7 +271,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 3. Specify Learners (e.g., LASSO)
@@ -265,7 +283,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 4. Specify Interactions of Interest
@@ -274,7 +295,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 5. Fit Treatment & Outcome Models
@@ -283,7 +307,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 6. Perform Sensitivity Analysis
@@ -292,7 +319,10 @@ def get_workflow_diagram_html():
                 </div>
             </div>
 
-            <div class="arrow-down">↓</div>
+            <div class="arrow-container">
+                <span class="arrow-down">↓</span>
+                <span class="arrow-up">↑</span>
+            </div>
 
             <div class="workflow-step">
                 7. Select Robust Interactions
@@ -302,7 +332,9 @@ def get_workflow_diagram_html():
             </div>
         </div>
 
-        <div class="arrow-down">↓</div>
+        <div class="arrow-container">
+            <span class="arrow-down">↓</span>
+        </div>
 
         <!-- Bottom Box -->
         <div class="workflow-box">
@@ -312,18 +344,50 @@ def get_workflow_diagram_html():
             </div>
         </div>
     </div>
+
+    <script>
+        // Position tooltips dynamically to ensure they're always visible
+        document.addEventListener('DOMContentLoaded', function() {
+            const workflowSteps = document.querySelectorAll('.workflow-step, .workflow-box');
+
+            workflowSteps.forEach(step => {
+                step.addEventListener('mouseenter', function(e) {
+                    const tooltip = this.querySelector('.tooltip');
+                    if (tooltip) {
+                        const rect = this.getBoundingClientRect();
+                        const tooltipRect = tooltip.getBoundingClientRect();
+
+                        // Position tooltip to the right of the viewport center
+                        tooltip.style.left = rect.right + 10 + 'px';
+                        tooltip.style.top = rect.top + 'px';
+
+                        // If tooltip goes off screen right, position to the left
+                        if (rect.right + tooltipRect.width + 20 > window.innerWidth) {
+                            tooltip.style.left = Math.max(10, rect.left - tooltipRect.width - 10) + 'px';
+                        }
+
+                        // Ensure tooltip doesn't go off screen top or bottom
+                        if (rect.top + tooltipRect.height > window.innerHeight) {
+                            tooltip.style.top = Math.max(10, window.innerHeight - tooltipRect.height - 10) + 'px';
+                        }
+                    }
+                });
+            });
+        });
+    </script>
     """
     return html
 
 def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
-    st.header("📚 Workflow Overview: Graph-Based Double Machine Learning")
 
-    # Display logo at the top - smaller size
-    try:
-        st.image("Logo.png", width=300)
-    except Exception:
-        pass  # If logo not found, continue without it
+    # Display logo at the very top, taking about 1/3 of horizontal space
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        try:
+            st.image("Logo.png", use_container_width=True)
+        except Exception:
+            pass  # If logo not found, continue without it
 
     st.markdown("""
     ### What is Graph-Based Double Machine Learning?
