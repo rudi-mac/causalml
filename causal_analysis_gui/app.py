@@ -108,13 +108,220 @@ def main():
         step_5_view_results()
 
 
+def get_workflow_diagram_html():
+    """Generate interactive HTML workflow diagram with hover tooltips"""
+    html = """
+    <style>
+        .workflow-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        .workflow-box {
+            background: white;
+            border: 3px solid #333;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .workflow-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+
+        .workflow-main-section {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border: 3px solid #333;
+            border-radius: 20px;
+            padding: 30px 20px;
+            margin: 15px 0;
+        }
+
+        .workflow-main-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .workflow-step {
+            background: linear-gradient(135deg, #4a5f3a 0%, #5d7647 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 18px;
+            margin: 12px 0;
+            font-size: 17px;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .workflow-step:hover {
+            transform: translateX(5px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            background: linear-gradient(135deg, #5d7647 0%, #6d8657 100%);
+        }
+
+        .arrow-down {
+            text-align: center;
+            font-size: 30px;
+            color: #666;
+            margin: 5px 0;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: normal;
+            max-width: 600px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            line-height: 1.6;
+            text-align: left;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 10px;
+        }
+
+        .workflow-step:hover .tooltip,
+        .workflow-box:hover .tooltip {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .workflow-container {
+                padding: 10px;
+            }
+            .workflow-box {
+                font-size: 16px;
+                padding: 15px;
+            }
+            .workflow-step {
+                font-size: 15px;
+                padding: 15px;
+            }
+            .tooltip {
+                max-width: 90vw;
+                font-size: 12px;
+            }
+        }
+    </style>
+
+    <div class="workflow-container">
+        <!-- Top Box -->
+        <div class="workflow-box">
+            Identify Phenomenon & Target Theory
+            <div class="tooltip">
+                Before starting with Step 1, it is crucial to narrow the scope of inquiry to a specific organizational phenomenon and establish a related theoretical framework to be elaborated.
+            </div>
+        </div>
+
+        <div class="arrow-down">↓</div>
+
+        <!-- Main Section -->
+        <div class="workflow-main-section">
+            <div class="workflow-main-title">Graph-Based Double Machine Learning</div>
+
+            <div class="workflow-step">
+                1. Encode Existing Knowledge into DAG
+                <div class="tooltip">
+                    In Step 1, researchers encode the existing state of the literature with respect to causal relationships into a DAG.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                2. Collect and Pre-Process Data
+                <div class="tooltip">
+                    In Step 2, relevant data is collected and pre-processed, including, for example, the construction of dummy variables for categorical measures. Where feasible, researchers should document measurement choices and missing-data handling to preserve transparency and replicability.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                3. Specify Learners (e.g., LASSO)
+                <div class="tooltip">
+                    Step 3 involves selecting appropriate ML estimators—such as LASSO regression—to separate the effect of the variable of interest from those of the control variables.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                4. Specify Interactions of Interest
+                <div class="tooltip">
+                    In Step 4, interaction terms are specified based on their relevance in the context of the investigated phenomenon and target theory.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                5. Fit Treatment & Outcome Models
+                <div class="tooltip">
+                    In Step 5, the treatment and outcome models are trained, which involves parameter tuning and cross validation to ensure robust and accurate estimation of treatment effects.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                6. Perform Sensitivity Analysis
+                <div class="tooltip">
+                    Step 6 uses sensitivity analysis to evaluate the robustness of the causal estimates by examining the impact of unobserved confounders, ensuring confidence in the derived conclusions.
+                </div>
+            </div>
+
+            <div class="arrow-down">↓</div>
+
+            <div class="workflow-step">
+                7. Select Robust Interactions
+                <div class="tooltip">
+                    Step 7 involves selecting the interaction terms that robustly appear significant. Taken together, these steps yield a disciplined pipeline that expands discovery while maintaining identification discipline and inferential validity.
+                </div>
+            </div>
+        </div>
+
+        <div class="arrow-down">↓</div>
+
+        <!-- Bottom Box -->
+        <div class="workflow-box">
+            Formulate Implications for Theory and Practice
+            <div class="tooltip">
+                After completing all seven steps, researchers can formulate implications for both theory and practice based on the robust findings from the graph-based DML analysis.
+            </div>
+        </div>
+    </div>
+    """
+    return html
+
 def step_0_workflow_overview():
     """Step 0: Workflow explanation and overview"""
     st.header("📚 Workflow Overview: Graph-Based Double Machine Learning")
 
-    # Display logo at the top
+    # Display logo at the top - smaller size
     try:
-        st.image("Logo.png", use_container_width=True)
+        st.image("Logo.png", width=300)
     except Exception:
         pass  # If logo not found, continue without it
 
@@ -161,43 +368,13 @@ def step_0_workflow_overview():
 
     st.markdown("---")
 
-    # Workflow diagram (using image)
+    # Interactive workflow diagram
     st.subheader("🔄 Visual Workflow")
+    st.markdown("*Hover over each box to see detailed explanations*")
 
-    try:
-        st.image("Workflow_Diagram.png", use_container_width=True)
-    except Exception:
-        # Fallback to text-based representation if image not found
-        st.markdown("""
-        ```
-        ┌─────────────────────────────────────────────────────┐
-        │                                                     │
-        │   Identify Phenomenon & Target Theory              │
-        │                                                     │
-        └────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-        ┌─────────────────────────────────────────────────────┐
-        │  GRAPH-BASED DOUBLE MACHINE LEARNING                │
-        │                                                     │
-        │  1. Encode Existing Knowledge into DAG              │
-        │  2. Collect and Pre-Process Data                    │
-        │  3. Specify Learners (e.g., LASSO)                 │
-        │  4. Specify Interactions of Interest   ◄────────┐  │
-        │  5. Fit Treatment & Outcome Models                  │
-        │  6. Perform Sensitivity Analysis                    │
-        │  7. Select Robust Interactions                      │
-        │                                                     │
-        └────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-        ┌─────────────────────────────────────────────────────┐
-        │                                                     │
-        │   Formulate Implications for Theory and Practice    │
-        │                                                     │
-        └─────────────────────────────────────────────────────┘
-        ```
-        """)
+    # Display interactive HTML workflow diagram
+    import streamlit.components.v1 as components
+    components.html(get_workflow_diagram_html(), height=1200, scrolling=False)
 
     st.markdown("---")
 
